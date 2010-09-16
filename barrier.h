@@ -1,0 +1,6 @@
+#ifndef WIN_PTHREADS_BARRIER_H
+#define WIN_PTHREADS_BARRIER_H
+
+#define _PTHREAD_BARRIER_FLAG (1<<30)
+
+#endif

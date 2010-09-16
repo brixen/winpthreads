@@ -1,0 +1,4 @@
+#ifndef WIN_PTHREADS_MUTEX_H
+#define WIN_PTHREADS_MUTEX_H
+
+#endif
