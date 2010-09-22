@@ -1,0 +1,5 @@
+#ifndef WIN_PTHREADS_RWLOCK_H
+#define WIN_PTHREADS_RWLOCK_H
+
+
+#endif
