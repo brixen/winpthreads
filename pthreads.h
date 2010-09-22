@@ -119,6 +119,7 @@ typedef unsigned pthread_key_t;
 typedef void *pthread_barrierattr_t;
 typedef long pthread_spinlock_t;
 typedef int pthread_condattr_t;
+typedef int pthread_rwlockattr_t;
 typedef struct _pthread_v *pthread_t;
 
 /* Windows doesn't have this, so declare it ourselves. */
@@ -164,24 +165,16 @@ struct pthread_cond_t
 #define PTHREAD_COND_INITIALIZER \
     {0,CRITICAL_SECTION_INITIALIZER,INVALID_HANDLE,INVALID_HANDLE,0}
 
-
-typedef struct pthread_rwlock pthread_rwlock;
-struct pthread_rwlock
-{
-    pthread_mutex_t lock;   
-    pthread_cond_t read_signal;
-    pthread_cond_t write_signal;
-    int state;
-    int blocked_writers;
+typedef struct pthread_rwlock_t pthread_rwlock_t;
+struct pthread_rwlock_t {
+    int                 readers;  
+    int                 writers;  
+    int                 readers_count; // Number of waiting readers
+    int                 writers_count; // Number of waiting writers
+    pthread_mutex_t     m;
+    pthread_cond_t      cr;
+    pthread_cond_t      cw;
 };
-typedef pthread_rwlock *pthread_rwlock_t;
-
-typedef struct pthread_rwlockattr pthread_rwlockattr;
-struct pthread_rwlockattr
-{
-    int pshared;
-};
-typedef pthread_rwlockattr *pthread_rwlockattr_t;
 
 #define PTHREAD_RWLOCK_INITIALIZER \
     {PTHREAD_MUTEX_INITIALIZER,PTHREAD_COND_INITIALIZER,PTHREAD_COND_INITIALIZER,0,0}
@@ -231,7 +224,11 @@ struct _pthread_v
 
 int pthread_rwlock_wrlock(pthread_rwlock_t *l);
 
+int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, struct timespec *ts);
+
 int pthread_rwlock_rdlock(pthread_rwlock_t *l);
+
+int pthread_rwlock_timedrdlock(pthread_rwlock_t *l, struct timespec *ts);
 
 int pthread_rwlock_unlock(pthread_rwlock_t *l);
 
@@ -241,8 +238,7 @@ int pthread_rwlock_destroy (pthread_rwlock_t *l);
 
 void pthread_testcancel(void);
 
-int pthread_cond_init(pthread_cond_t *cv, 
-                             pthread_condattr_t *a);
+int pthread_cond_init(pthread_cond_t *cv, pthread_condattr_t *a);
 
 int pthread_cond_destroy(pthread_cond_t *cv);
 
@@ -250,8 +246,7 @@ int pthread_cond_signal (pthread_cond_t *cv);
 
 int pthread_cond_broadcast (pthread_cond_t *cv);
 
-int pthread_cond_wait (pthread_cond_t *cv, 
-                              pthread_mutex_t *external_mutex);
+int pthread_cond_wait (pthread_cond_t *cv, pthread_mutex_t *external_mutex);
 
 int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, struct timespec *t);
 

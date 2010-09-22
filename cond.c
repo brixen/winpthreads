@@ -1,5 +1,11 @@
+/*
+ * Posix Condition Variables for Microsoft Windows.
+ * 22-9-2010 Based on the ACE framework implementation.
+ */
+
 #include "pthreads.h"
 #include "cond.h"
+#include "misc.h"
 
  
 int pthread_cond_init(pthread_cond_t *cv, 
@@ -79,8 +85,7 @@ int pthread_cond_broadcast (pthread_cond_t *cv)
         // This assignment is okay, even without the <waiters_count_lock_> held 
         // because no other waiter threads can wake up to access it.
         cv->was_broadcast_ = 0;
-    }
-    else
+    } else
         LeaveCriticalSection (&cv->waiters_count_lock_);
     return 0;
 }
@@ -129,7 +134,8 @@ int pthread_cond_wait (pthread_cond_t *cv,
 
 int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, struct timespec *t)
 {
-    int r;
+    int r = 0;
+	DWORD dwr;
 
     CHECK_HANDLE(cv->waiters_done_);
     CHECK_MUTEX(external_mutex);
@@ -143,7 +149,27 @@ int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, 
     // This call atomically releases the mutex and waits on the
     // semaphore until <pthread_cond_signal> or <pthread_cond_broadcast>
     // are called by another thread.
-    SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE);
+    dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE);
+	switch (dwr) {
+	case WAIT_TIMEOUT:
+		r = ETIMEDOUT;
+		break;
+	case WAIT_ABANDONED:
+		r = EPERM;
+		break;
+	case WAIT_OBJECT_0:
+		r = 0;
+		break;
+	default:
+		//We can only return EINVAL though it might not be posix compliant 
+		r = EINVAL;
+	}
+	if (r) {
+		EnterCriticalSection (&cv->waiters_count_lock_);
+		cv->waiters_count_--;
+		LeaveCriticalSection (&cv->waiters_count_lock_);
+		return r;
+	}
 
     // Reacquire lock to avoid race conditions.
     EnterCriticalSection (&cv->waiters_count_lock_);
@@ -167,7 +193,7 @@ int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, 
         // give to our callers. 
         WaitForSingleObject (external_mutex->h, INFINITE);
 
-    return 0;
+    return r;
 }
 
 
