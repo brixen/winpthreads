@@ -20,9 +20,9 @@ int pthread_rwlock_destroy (pthread_rwlock_t *rwlock)
         return EBUSY;
     }
 
+    UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
     UPD_RESULT(pthread_mutex_destroy(&rwlock->m), result);
     UPD_RESULT(pthread_cond_destroy (&rwlock->cw), result);
-    UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
 
     return result;
 } 

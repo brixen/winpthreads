@@ -19,7 +19,12 @@ spinlock.o: spinlock.c
 misc.o: misc.c
 	gcc -c misc.c
 
+libpthreads.a: pthread.o mutex.o cond.o rwlock.o barrier.o spinlock.o misc.o
+	ar rcs libpthreads.a  misc.o pthread.o mutex.o cond.o rwlock.o barrier.o spinlock.o
+
+lib: libpthreads.a	
+
 clean:
-	rm -rf *.o
+	rm -rf *.o *.a
 
 

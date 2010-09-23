@@ -28,12 +28,8 @@
         return e; }
 
 /* ms can be 64 bit, solve wrap-around issues: */
-#define dwMilliSecs(ms) ((ms) >= INFINITE ? INFINITE : (DWORD)(ms))
-
-inline void _mm_pause(void)
-{
-    __asm__ __volatile__("pause");
-}
+#define dwMilliSecs(ms)		((ms) >= INFINITE ? INFINITE : (DWORD)(ms))
+#define _mm_pause()			{__asm__ __volatile__("pause");}
 #define _ReadWriteBarrier   __sync_synchronize
 #define YieldProcessor      _mm_pause
 
