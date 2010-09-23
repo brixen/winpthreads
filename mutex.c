@@ -1,6 +1,8 @@
+#include <stdio.h>
 #include "pthreads.h"
 #include "mutex.h"
 #include "misc.h"
+
 
  
 int pthread_mutex_lock(pthread_mutex_t *m)
@@ -24,6 +26,7 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
 {
     CHECK_MUTEX(m);
     if (!ReleaseMutex(m->h)) {
+		printf("pthread_mutex_unlock GetLastError %d\n",GetLastError());
         return EPERM;
     }
     return 0;

@@ -2,7 +2,7 @@
  * Posix Condition Variables for Microsoft Windows.
  * 22-9-2010 Based on the ACE framework implementation.
  */
-
+#include <stdio.h>
 #include "pthreads.h"
 #include "cond.h"
 #include "misc.h"
@@ -149,7 +149,9 @@ int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, 
     // This call atomically releases the mutex and waits on the
     // semaphore until <pthread_cond_signal> or <pthread_cond_broadcast>
     // are called by another thread.
-    dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE);
+    //dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE);
+	printf("pthread_cond_timedwait wait 3000\n");
+    dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, 3000, FALSE);
 	switch (dwr) {
 	case WAIT_TIMEOUT:
 		r = ETIMEDOUT;

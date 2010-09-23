@@ -218,6 +218,7 @@ struct _pthread_v
     unsigned p_state;
     unsigned int keymax;
     void **keyval;
+	int tid;
 
     jmp_buf jb;
 };

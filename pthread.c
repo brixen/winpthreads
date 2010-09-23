@@ -555,7 +555,8 @@ int pthread_create_wrapper(void *args)
 
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
 {
-    struct _pthread_v *tv = (struct _pthread_v *)malloc(sizeof(struct _pthread_v));
+    static int tid = 0;
+	struct _pthread_v *tv = (struct _pthread_v *)malloc(sizeof(struct _pthread_v));
     size_t ssize = 0;
 
     CHECK_PTR(th);
@@ -573,6 +574,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     tv->keymax = 0;
     tv->keyval = NULL;
     tv->h = (HANDLE) -1;
+    tv->tid =tid++;
 
     if (attr)
     {
