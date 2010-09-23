@@ -24,10 +24,11 @@ void *hello(void *arg)
 }
 
 pthread_rwlock_t       rwlock;
+char testType[100];
 
 /*================================================================================*/
 #define COND_NTHREADS                3
-#define COND_WAIT_TIME_SECONDS       0
+#define COND_WAIT_TIME_SECONDS       10
 
 int                 workToDo = 0;
 pthread_cond_t      cond;
@@ -35,12 +36,14 @@ pthread_mutex_t     mutex;
 
 void *condTimed_threadfunc(void *parm)
 {
+  int               tid;
   int               rc;
   struct timespec   ts;
   struct timeval    tp;
 
   rc = pthread_mutex_lock(&mutex);
   checkResults("pthread_mutex_lock()\n", rc);
+  tid = pthread_self()->tid;
 
   /* Usually worker threads will loop on these operations */
   while (1) {
@@ -53,39 +56,45 @@ void *condTimed_threadfunc(void *parm)
     ts.tv_sec += COND_WAIT_TIME_SECONDS;
 
     while (!workToDo) {
-      printf("Thread blocked\n");
-      rc = pthread_cond_timedwait(&cond, &mutex, &ts);
+	  if (strcmp(testType,"notTimed") == 0) {
+		printf("Thread %d blocked, notTimed\n", tid);
+		rc = pthread_cond_wait(&cond, &mutex);
+	  } else {
+		printf("Thread %d blocked\n", tid);
+		rc = pthread_cond_timedwait(&cond, &mutex, &ts);
+	  }
       /* If the wait timed out, in this example, the work is complete, and   */
       /* the thread will end.                                                */
       /* In reality, a timeout must be accompanied by some sort of checking  */
       /* to see if the work is REALLY all complete. In the simple example    */
       /* we'll just go belly up when we time out.                            */
-      printf("Thread unblocked\n");
+      printf("Thread %d unblocked\n", tid);
       if (rc == ETIMEDOUT) {
-        printf("Wait timed out!\n");
+        printf("Wait %d timed out!\n", tid);
         rc = pthread_mutex_unlock(&mutex);
-        checkResults("pthread_mutex_lock()\n", rc);
+        checkResults("pthread_mutex_unlock() A\n", rc);
+		printf("Exit %d\n", tid);
         pthread_exit(NULL);
       }
       checkResults("pthread_cond_timedwait()\n", rc);
     }
 
-    printf("Thread consumes work here\n");
+    printf("Thread %d consumes work here\n", tid);
     workToDo = 0;
   }
 
   rc = pthread_mutex_unlock(&mutex);
-  checkResults("pthread_mutex_lock()\n", rc);
+  checkResults("pthread_mutex_unlock() B\n", rc);
   return NULL;
 }
 
-int condTimed_main(void)
+int condTimed_main()
 {
   int                   rc=0;
   int                   i;
   pthread_t             threadid[COND_NTHREADS];
 
-  printf("Enter Testcase - condTimed_main\n");
+  printf("Enter Testcase - condTimed_main %s\n",testType);
 
   rc = pthread_mutex_init (&mutex, NULL);
   checkResults("pthread_mutex_init()\n", rc);
@@ -148,7 +157,7 @@ void *rwlockTimed_rdlockThread(void *arg)
   }
   checkResults("pthread_rwlock_rdlock() 1\n", rc);
 
-  Sleep(2);
+  Sleep(2000);
 
   printf("unlock the read lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
@@ -178,7 +187,7 @@ int rwlockTimed_main(void)
   checkResults("pthread_create\n", rc);
 
   printf("Main, wait a bit holding the write lock\n");
-  Sleep(5);
+  Sleep(3001);
 
   printf("Main, Now unlock the write lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
@@ -316,12 +325,17 @@ void thread(void)
 }
 
 int main(int argc, char * argv[]) {
-    char name[1000];
+    char name[100];
 
-	if (argc != 2)
+	if (argc < 2)
 	{
 		printf ("Usage: %s <name>\nwhere <name> is test name\n",argv[0]);
 		exit(1);
+	}
+	strcpy(testType, "default");
+ 	if (argc == 3)
+	{
+		strcpy(testType, argv[2]);
 	}
 	strcpy(name, argv[1]);
     printf ("Threads test: %s\n",name);
