@@ -31,6 +31,7 @@ char testType[100];
 #define COND_WAIT_TIME_SECONDS       10
 
 int                 workToDo = 0;
+int                 workLeave = 0;
 pthread_cond_t      cond;
 pthread_mutex_t     mutex;
 
@@ -46,7 +47,7 @@ void *condTimed_threadfunc(void *parm)
   tid = pthread_self()->tid;
 
   /* Usually worker threads will loop on these operations */
-  while (1) {
+  while (!workLeave) {
     rc =  gettimeofday(&tp, NULL);
     checkResults("gettimeofday()\n", rc);
 
@@ -55,7 +56,7 @@ void *condTimed_threadfunc(void *parm)
     ts.tv_nsec = tp.tv_usec * 1000;
     ts.tv_sec += COND_WAIT_TIME_SECONDS;
 
-    while (!workToDo) {
+    do {
 	  if (strcmp(testType,"notTimed") == 0) {
 		printf("Thread %d blocked, notTimed\n", tid);
 		rc = pthread_cond_wait(&cond, &mutex);
@@ -77,12 +78,14 @@ void *condTimed_threadfunc(void *parm)
         pthread_exit(NULL);
       }
       checkResults("pthread_cond_timedwait()\n", rc);
-    }
-
-    printf("Thread %d consumes work here\n", tid);
-    workToDo = 0;
-  }
-
+    } while (!workLeave && !workToDo); 
+	if (workToDo) {
+		printf("Thread %d consumes work here\n", tid);
+		Sleep(2000);
+		workToDo = 0;
+	}
+  } 
+  printf("Thread %d leaves here\n", tid);
   rc = pthread_mutex_unlock(&mutex);
   checkResults("pthread_mutex_unlock() B\n", rc);
   return NULL;
@@ -93,6 +96,7 @@ int condTimed_main()
   int                   rc=0;
   int                   i;
   pthread_t             threadid[COND_NTHREADS];
+  struct timespec   ts;
 
   printf("Enter Testcase - condTimed_main %s\n",testType);
 
@@ -102,16 +106,35 @@ int condTimed_main()
   rc = pthread_cond_init (&cond, NULL);
   checkResults("pthread_cond_init()\n", rc);
 	
+  rc = pthread_mutex_lock(&mutex);
+  checkResults("pthread_mutex_lock()\n", rc);
+
+  printf("Try steal a signal 1, should timeout\n");
+
+  rc = pthread_cond_timedwait(&cond, &mutex, &ts);
+  printf("rc=%d\n",rc);
+  checkResults("pthread_cond_timedwait() Steal 1\n", rc - ETIMEDOUT);
+  printf("Done, rc=%d\n",rc);
+  rc = pthread_mutex_unlock(&mutex);
+
   printf("Create %d threads\n", COND_NTHREADS);
   for(i=0; i<COND_NTHREADS; ++i) {
     rc = pthread_create(&threadid[i], NULL, condTimed_threadfunc, NULL);
     checkResults("pthread_create()\n", rc);
   }
-
-  rc = pthread_mutex_lock(&mutex);
-  checkResults("pthread_mutex_lock()\n", rc);
-
+  Sleep(2000);
   printf("One work item to give to a thread\n");
+  workToDo = 1;
+  rc = pthread_mutex_lock(&mutex);
+  rc = pthread_cond_signal(&cond);
+  checkResults("pthread_cond_signal()\n", rc);
+  rc = pthread_mutex_unlock(&mutex);
+  checkResults("pthread_mutex_unlock()\n", rc);
+
+  Sleep(10000);
+  rc = pthread_mutex_lock(&mutex);
+  checkResults("pthread_mutex_lock() 2\n", rc);
+  printf("One another work item to give to a thread\n");
   workToDo = 1;
   rc = pthread_cond_signal(&cond);
   checkResults("pthread_cond_signal()\n", rc);
@@ -119,12 +142,25 @@ int condTimed_main()
   rc = pthread_mutex_unlock(&mutex);
   checkResults("pthread_mutex_unlock()\n", rc);
 
+  Sleep(10000);
+  printf("Broadcast leave to all threads, waiters=%d\n",cond.waiters_count_);
+  workLeave = 1;
+  rc = pthread_cond_broadcast(&cond);
+   printf("Broadcast done, waiters=%d\n",cond.waiters_count_);
+  checkResults("pthread_cond_broadcast()\n", rc);
+  printf("Try steal a signal 2, should timeout\n");
+  rc = pthread_mutex_lock(&mutex);
+  rc = pthread_cond_timedwait(&cond, &mutex, &ts);
+  checkResults("pthread_cond_timedwait() Steal 2\n", rc - ETIMEDOUT);
+  printf("Done, rc=%d\n",rc);
+
   printf("Wait for threads and cleanup\n");
   for (i=0; i<COND_NTHREADS; ++i) {
     rc = pthread_join(threadid[i], NULL);
     checkResults("pthread_join()\n", rc);
   }
 
+  printf("Exit, waiters=%d\n",cond.waiters_count_);
   pthread_cond_destroy(&cond);
   pthread_mutex_destroy(&mutex);
   printf("Main completed\n");
