@@ -62,6 +62,7 @@ int pthread_rwlock_rdlock (pthread_rwlock_t *rwlock)
 {
     int result=0;
     
+	pthread_testcancel();
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -87,6 +88,7 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock, struct timespec *ts)
 {
     int result=0;
     
+	pthread_testcancel();
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -179,6 +181,7 @@ int pthread_rwlock_wrlock (pthread_rwlock_t *rwlock)
 {
 	int result=0;
 
+	pthread_testcancel();
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -203,6 +206,7 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock, struct timespec *ts)
 {
 	int result=0;
 
+	pthread_testcancel();
 	if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 

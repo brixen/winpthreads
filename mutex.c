@@ -4,7 +4,7 @@
 #include "misc.h"
 
 
- 
+#if defined USE_MUTEX_Mutex
 int pthread_mutex_lock(pthread_mutex_t *m)
 {
     CHECK_MUTEX(m);
@@ -20,6 +20,43 @@ int pthread_mutex_lock(pthread_mutex_t *m)
             break;
     }
     return EINVAL;
+}
+
+
+int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
+{
+    unsigned long long t, ct;
+
+    CHECK_MUTEX(m);
+    CHECK_PTR(ts);
+
+    /* Try to lock it without waiting */
+    if (!pthread_mutex_trylock(m)) return 0;
+
+    ct = _pthread_time_in_ms();
+    t = _pthread_time_in_ms_from_timespec(ts);
+
+    while (1)
+    {
+        /* Have we waited long enough? */
+        if (ct >= t) return ETIMEDOUT;
+        switch (WaitForSingleObject(m->h, dwMilliSecs(t - ct))) {
+            case WAIT_TIMEOUT:
+                break;
+            case WAIT_ABANDONED:
+                return EINVAL;
+                break;
+            case WAIT_OBJECT_0:
+                return 0;
+                break;
+            case WAIT_FAILED:
+                return EINVAL;
+                break;
+        }
+        /* Get current time */
+        ct = _pthread_time_in_ms();
+    }
+    return 0;
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *m)
@@ -74,6 +111,76 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
     m->valid = 0;
     return 0;
 }
+#else //USE_MUTEX_CriticalSection
+int pthread_mutex_lock(pthread_mutex_t *m)
+{
+	EnterCriticalSection(&m->cs);
+	return 0;
+}
+
+int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
+{
+	unsigned long long t, ct;
+	
+	struct _pthread_crit_t
+	{
+		void *debug;
+		LONG count;
+		LONG r_count;
+		HANDLE owner;
+		HANDLE sem;
+		ULONG_PTR spin;
+	};
+	
+	/* Try to lock it without waiting */
+	if (!pthread_mutex_trylock(m)) return 0;
+	
+	ct = _pthread_time_in_ms();
+	t = _pthread_time_in_ms_from_timespec(ts);
+	
+	while (1)
+	{
+		/* Have we waited long enough? */
+		if (ct > t) return ETIMEDOUT;
+		
+		/* Wait on semaphore within critical section */
+		WaitForSingleObject(((struct _pthread_crit_t *)&m->cs)->sem, t - ct);
+		
+		/* Try to grab lock */
+		if (!pthread_mutex_trylock(m)) return 0;
+		
+		/* Get current time */
+		ct = _pthread_time_in_ms();
+	}
+}
+
+int pthread_mutex_unlock(pthread_mutex_t *m)
+{
+	LeaveCriticalSection(&m->cs);
+	return 0;
+}
+	
+int pthread_mutex_trylock(pthread_mutex_t *m)
+{
+	return TryEnterCriticalSection(&m->cs) ? 0 : EBUSY; 
+}
+
+int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
+{
+	(void) a;
+	InitializeCriticalSection(&m->cs);
+    m->valid = 1;
+	
+	return 0;
+}
+
+int pthread_mutex_destroy(pthread_mutex_t *m)
+{
+    m->valid = 0;
+	DeleteCriticalSection(&m->cs);
+	return 0;
+}
+#endif //USE_MUTEX_Mutex
 
 int pthread_mutexattr_init(pthread_mutexattr_t *a)
 {
@@ -148,41 +255,5 @@ int pthread_mutexattr_setprioceiling(pthread_mutexattr_t *a, int prio)
     *a &= (PTHREAD_PRIO_MULT - 1);
     *a += prio * PTHREAD_PRIO_MULT;
 
-    return 0;
-}
-
-int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
-{
-    unsigned long long t, ct;
-
-    CHECK_MUTEX(m);
-    CHECK_PTR(ts);
-
-    /* Try to lock it without waiting */
-    if (!pthread_mutex_trylock(m)) return 0;
-
-    ct = _pthread_time_in_ms();
-    t = _pthread_time_in_ms_from_timespec(ts);
-
-    while (1)
-    {
-        /* Have we waited long enough? */
-        if (ct >= t) return ETIMEDOUT;
-        switch (WaitForSingleObject(m->h, dwMilliSecs(t - ct))) {
-            case WAIT_TIMEOUT:
-                break;
-            case WAIT_ABANDONED:
-                return EINVAL;
-                break;
-            case WAIT_OBJECT_0:
-                return 0;
-                break;
-            case WAIT_FAILED:
-                return EINVAL;
-                break;
-        }
-        /* Get current time */
-        ct = _pthread_time_in_ms();
-    }
     return 0;
 }

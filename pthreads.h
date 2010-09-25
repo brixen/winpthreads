@@ -32,7 +32,6 @@
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 * OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-
 #ifndef WIN_PTHREADS
 #define WIN_PTHREADS
 
@@ -46,6 +45,45 @@
 #include <limits.h>
 
 #include <sys/timeb.h>
+
+/* Compatibility stuff: */
+//A few ways to implement pthread_mutex:
+//#define USE_MUTEX_Mutex
+#define USE_MUTEX_CriticalSection
+
+//A few ways to implement pthread_cond:
+#define USE_COND_Semaphore //default
+//#define USE_COND_SignalObjectAndWait //has a flaw at timeout, hopefully fixed
+//#define USE_COND_ConditionVariable //Windows Vista+, NOT cross-process
+
+//A few ways to implement pthread_rwlock:
+#define USE_RWLOCK_pthread_cond //default, use pthread_cond above
+//#define USE_RWLOCK_SRWLock //Windows Vista+, NOT cross-process
+
+/************************/
+//Dependencies:
+#ifdef USE_COND_SignalObjectAndWait
+#undef USE_MUTEX_CriticalSection
+#define USE_MUTEX_Mutex
+#undef USE_RWLOCK_SRWLock
+#define USE_RWLOCK_pthread_cond
+#endif
+
+#ifdef USE_COND_ConditionVariable
+#undef USE_MUTEX_Mutex
+#define USE_MUTEX_CriticalSection
+#undef USE_RWLOCK_pthread_cond
+#define USE_RWLOCK_SRWLock
+#endif
+
+#ifdef USE_RWLOCK_SRWLock
+#undef USE_MUTEX_Mutex
+#define USE_MUTEX_CriticalSection
+#undef USE_COND_Semaphore
+#undef USE_COND_SignalObjectAndWait
+#define USE_COND_ConditionVariable
+#endif
+/************************/
 
 #define ETIMEDOUT	110
 #define ENOTSUP		134
@@ -134,12 +172,19 @@ typedef struct pthread_mutex_t pthread_mutex_t;
 struct pthread_mutex_t
 {
     int valid;   
+#if defined USE_MUTEX_Mutex
     HANDLE h;
+#else //USE_MUTEX_CriticalSection
+	CRITICAL_SECTION cs;
+#endif
 };
+
 #define PTHREAD_MUTEX_INITIALIZER {0,INVALID_HANDLE}
 /* from  http://locklessinc.com/articles/pthreads_on_windows/ : */
 #define CRITICAL_SECTION_INITIALIZER {(void*)-1,-1,0,0,0,0}
 
+#if defined USE_COND_ConditionVariable
+#include "compat.h"
 typedef struct pthread_cond_t pthread_cond_t;
 struct pthread_cond_t
 {
@@ -149,7 +194,18 @@ struct pthread_cond_t
     CRITICAL_SECTION waiters_count_lock_;
     // Serialize access to <waiters_count_>.
 
-    HANDLE sema_;
+    CONDITION_VARIABLE CV;
+};
+#else //USE_COND_Semaphore default
+typedef struct pthread_cond_t pthread_cond_t;
+struct pthread_cond_t
+{
+    int waiters_count_;
+    // Number of waiting threads.
+
+    CRITICAL_SECTION waiters_count_lock_;
+	// Serialize access to <waiters_count_>.
+	HANDLE sema_;
     // Semaphore used to queue up threads waiting for the condition to
     // become signaled. 
 
@@ -162,6 +218,7 @@ struct pthread_cond_t
     // Keeps track of whether we were broadcasting or signaling.  This
     // allows us to optimize the code if we're just signaling.
 };
+#endif
 #define PTHREAD_COND_INITIALIZER \
     {0,CRITICAL_SECTION_INITIALIZER,INVALID_HANDLE,INVALID_HANDLE,0}
 
