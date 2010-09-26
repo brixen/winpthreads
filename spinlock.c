@@ -1,5 +1,6 @@
 #include "pthreads.h"
 #include "spinlock.h"
+#include "misc.h"
       
 int pthread_spin_init(pthread_spinlock_t *l, int pshared)
 {
@@ -18,10 +19,15 @@ int pthread_spin_destroy(pthread_spinlock_t *l)
 /* No-fair spinlock due to lack of knowledge of thread number */
 int pthread_spin_lock(pthread_spinlock_t *l)
 {
-    while (InterlockedExchange(l, EBUSY))
+  union doVol {
+    pthread_spinlock_t *l;
+    volatile pthread_spinlock_t *lv;
+  } v;
+  v.l = l;
+    while (InterlockedExchange(v.l, EBUSY))
     {
         /* Don't lock the bus whilst waiting */
-        while (*l)
+        while (*v.l)
         {
             YieldProcessor();
 
