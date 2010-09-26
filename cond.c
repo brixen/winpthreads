@@ -170,7 +170,7 @@ int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, 
     // are called by another thread.
     //dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE);
 	dwr = dwMilliSecs(_pthread_time_in_ms_from_timespec(t));
-	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded)\n");
+	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded)\n", (int) dwr);
     dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, 3000, FALSE);
 	switch (dwr) {
 	case WAIT_TIMEOUT:
@@ -248,7 +248,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m, struct timespe
 	pthread_testcancel();
 	
 	dwr = dwMilliSecs(_pthread_time_in_ms_from_timespec(t));
-	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded for now)\n", dwr); dwr = 3000;
+	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded for now)\n", (int) dwr); dwr = 3000;
 	if (!SleepConditionVariableCS(&c->CV,  &m->cs, dwr)) return ETIMEDOUT;
 	
 	/* We can have a spurious wakeup after the timeout */
@@ -267,7 +267,7 @@ int pthread_cond_signal (pthread_cond_t *cv)
     LeaveCriticalSection (&cv->waiters_count_lock_);
 
     // If there aren't any waiters, then this is a no-op.  
-	printf("have_waiters cv->waiters_count_ = %d %d\n",have_waiters,cv->waiters_count_);
+	printf("have_waiters cv->waiters_count_ = %d %d\n", (int) have_waiters,cv->waiters_count_);
     if (have_waiters)
         ReleaseSemaphore (cv->sema_, 1, 0);
     return 0;
@@ -342,7 +342,7 @@ int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, 
 
     //dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE);
 	dwr = dwMilliSecs(_pthread_time_in_ms_from_timespec(t));
-	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded for now)\n", dwr); dwr = 3000;
+	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded for now)\n", (int) dwr); dwr = 3000;
 
     dwr = WaitForSingleObject(cv->sema_, dwr);
 	switch (dwr) {

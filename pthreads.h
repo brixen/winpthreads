@@ -161,12 +161,18 @@ typedef int pthread_rwlockattr_t;
 typedef struct _pthread_v *pthread_t;
 
 /* Windows doesn't have this, so declare it ourselves. */
-struct timespec
-{
-    /* long long in windows is the same as long in unix for 64bit */
-    long long tv_sec;
-    long long tv_nsec;
-} ;
+#ifndef _TIMESPEC_DEFINED
+#define _TIMESPEC_DEFINED
+struct timespec {
+  time_t  tv_sec;   /* Seconds */
+  long    tv_nsec;  /* Nanoseconds */
+};
+
+struct itimerspec {
+  struct timespec  it_interval;  /* Timer period */
+  struct timespec  it_value;     /* Timer expiration */
+};
+#endif
 
 typedef struct pthread_mutex_t pthread_mutex_t;
 struct pthread_mutex_t
@@ -428,6 +434,7 @@ int pthread_barrierattr_getpshared(void **attr, int *s);
 #define pthread_sigmask(H, S1, S2) 0
  
 /* Wrap cancellation points */
+#ifdef __WINPTRHEAD_ENABLE_WRAP_API
 #define accept(...) (pthread_testcancel(), accept(__VA_ARGS__))
 #define aio_suspend(...) (pthread_testcancel(), aio_suspend(__VA_ARGS__))
 #define clock_nanosleep(...) (pthread_testcancel(), clock_nanosleep(__VA_ARGS__))
@@ -662,5 +669,6 @@ int pthread_barrierattr_getpshared(void **attr, int *s);
 #define wordexp(...) (pthread_testcancel(), wordexp(__VA_ARGS__))
 #define wprintf(...) (pthread_testcancel(), wprintf(__VA_ARGS__))
 #define wscanf(...) (pthread_testcancel(), wscanf(__VA_ARGS__))
+#endif
 
 #endif /* WIN_PTHREADS */

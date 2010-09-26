@@ -140,11 +140,16 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 	
 	while (1)
 	{
+	  	union __cast {
+		  struct _pthread_crit_t *pc;
+		  CRITICAL_SECTION *cs;
+		} c;
 		/* Have we waited long enough? */
 		if (ct > t) return ETIMEDOUT;
 		
+		c.cs = &m->cs;
 		/* Wait on semaphore within critical section */
-		WaitForSingleObject(((struct _pthread_crit_t *)&m->cs)->sem, t - ct);
+		WaitForSingleObject(c.pc->sem, t - ct);
 		
 		/* Try to grab lock */
 		if (!pthread_mutex_trylock(m)) return 0;

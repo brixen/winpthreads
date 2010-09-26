@@ -1,4 +1,5 @@
 #include "pthreads.h"
+#include "misc.h"
 #include "barrier.h" 
 
 int pthread_barrier_destroy(pthread_barrier_t *b)
@@ -115,7 +116,7 @@ int pthread_barrierattr_destroy(void **attr)
 
 int pthread_barrierattr_setpshared(void **attr, int s)
 {
-    *attr = (void *) s;
+    *attr = (void *) (size_t) s;
     return 0;
 }
 
