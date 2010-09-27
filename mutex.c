@@ -111,7 +111,7 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
     m->valid = 0;
     return 0;
 }
-#else //USE_MUTEX_CriticalSection
+#else /* USE_MUTEX_CriticalSection */
 int pthread_mutex_lock(pthread_mutex_t *m)
 {
 	EnterCriticalSection(&m->cs);
@@ -185,7 +185,7 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 	DeleteCriticalSection(&m->cs);
 	return 0;
 }
-#endif //USE_MUTEX_Mutex
+#endif /* USE_MUTEX_Mutex */
 
 int pthread_mutexattr_init(pthread_mutexattr_t *a)
 {
