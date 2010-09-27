@@ -152,7 +152,7 @@ int pthread_rwlock_unlock (pthread_rwlock_t *rwlock)
 	if (rwlock->writers) {
 		rwlock->writers = 0;
 		if (rwlock->readers_count == 1) {
-			//optimize with just a signal for the most common case:
+			/* optimize with just a signal for the most common case:  */
 			result = pthread_cond_signal (&rwlock->cr);
 		} else if (rwlock->readers_count > 0) {
 			result = pthread_cond_broadcast (&rwlock->cr);

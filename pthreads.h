@@ -1,43 +1,43 @@
 /*
-* Posix Threads library for Microsoft Windows
-*
-* Use at own risk, there is no implied warranty to this code.
-* It uses undocumented features of Microsoft Windows that can change
-* at any time in the future.
-*
-* (C) 2010 Lockless Inc.
-* All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without modification,
-* are permitted provided that the following conditions are met:
-*
-*
-*  * Redistributions of source code must retain the above copyright notice,
-*    this list of conditions and the following disclaimer.
-*  * Redistributions in binary form must reproduce the above copyright notice,
-*    this list of conditions and the following disclaimer in the documentation
-*    and/or other materials provided with the distribution.
-*  * Neither the name of Lockless Inc. nor the names of its contributors may be
-*    used to endorse or promote products derived from this software without
-*    specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AN
-* ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-* WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-* INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-* BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-* DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-* LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
-* OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Parts of this library are derived by:
+ *
+ * Posix Threads library for Microsoft Windows
+ *
+ * Use at own risk, there is no implied warranty to this code.
+ * It uses undocumented features of Microsoft Windows that can change
+ * at any time in the future.
+ *
+ * (C) 2010 Lockless Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ *
+ *  * Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *  * Neither the name of Lockless Inc. nor the names of its contributors may be
+ *    used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AN
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ * OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 #ifndef WIN_PTHREADS
 #define WIN_PTHREADS
 
-
 #include <windows.h>
-#include <setjmp.h>
 #include <errno.h>
 #include <sys/types.h>
 
@@ -47,21 +47,27 @@
 #include <sys/timeb.h>
 
 /* Compatibility stuff: */
-//A few ways to implement pthread_mutex:
-//#define USE_MUTEX_Mutex
-#define USE_MUTEX_CriticalSection
 
-//A few ways to implement pthread_cond:
-#define USE_COND_Semaphore //default
-//#define USE_COND_SignalObjectAndWait //has a flaw at timeout, hopefully fixed
-//#define USE_COND_ConditionVariable //Windows Vista+, NOT cross-process
+/* A few ways to implement pthread_mutex:  */
+/* #define USE_MUTEX_Mutex 1 */
+#define USE_MUTEX_CriticalSection 1
 
-//A few ways to implement pthread_rwlock:
-#define USE_RWLOCK_pthread_cond //default, use pthread_cond above
-//#define USE_RWLOCK_SRWLock //Windows Vista+, NOT cross-process
+/* A few ways to implement pthread_cond:  */
+/* default.  */
+#define USE_COND_Semaphore 1
+/* USE_COND_SignalObjectAndWait has a flaw at timeout, hopefully fixed.  */
+/* #define USE_COND_SignalObjectAndWait 1 */
+/* USE_COND_ConditionVariable is Windows Vista+, NOT cross-process.  */
+/* #define USE_COND_ConditionVariable 1 */
 
-/************************/
-//Dependencies:
+/* A few ways to implement pthread_rwlock:  */
+/* default, use pthread_cond above.  */
+#define USE_RWLOCK_pthread_cond 1
+/* USE_RWLOCK_SRWLock is Windows Vista+, NOT cross-process.  */
+/* #define USE_RWLOCK_SRWLock 1 */
+
+/* Dependencies:  */
+
 #ifdef USE_COND_SignalObjectAndWait
 #undef USE_MUTEX_CriticalSection
 #define USE_MUTEX_Mutex
@@ -83,12 +89,13 @@
 #undef USE_COND_SignalObjectAndWait
 #define USE_COND_ConditionVariable
 #endif
-/************************/
 
+/* Error-codes.  */
 #define ETIMEDOUT	110
 #define ENOTSUP		134
 #define EWOULDBLOCK	EAGAIN     
 
+/* pthread specific defines.  */
 
 #define PTHREAD_CANCEL_DISABLE 0
 #define PTHREAD_CANCEL_ENABLE 0x01
@@ -180,8 +187,8 @@ struct pthread_mutex_t
     int valid;   
 #if defined USE_MUTEX_Mutex
     HANDLE h;
-#else //USE_MUTEX_CriticalSection
-	CRITICAL_SECTION cs;
+#else /* USE_MUTEX_CriticalSection.  */
+    CRITICAL_SECTION cs;
 #endif
 };
 
@@ -194,35 +201,23 @@ struct pthread_mutex_t
 typedef struct pthread_cond_t pthread_cond_t;
 struct pthread_cond_t
 {
-    int waiters_count_;
-    // Number of waiting threads.
-
-    CRITICAL_SECTION waiters_count_lock_;
-    // Serialize access to <waiters_count_>.
-
+    int waiters_count_; /* Number of waiting threads.  */
+    CRITICAL_SECTION waiters_count_lock_; /* Serialize access to <waiters_count_>.  */
     CONDITION_VARIABLE CV;
 };
-#else //USE_COND_Semaphore default
+#else /* USE_COND_Semaphore default */
 typedef struct pthread_cond_t pthread_cond_t;
 struct pthread_cond_t
 {
-    int waiters_count_;
-    // Number of waiting threads.
-
-    CRITICAL_SECTION waiters_count_lock_;
-	// Serialize access to <waiters_count_>.
-	HANDLE sema_;
-    // Semaphore used to queue up threads waiting for the condition to
-    // become signaled. 
-
-    HANDLE waiters_done_;
-    // An auto-reset event used by the broadcast/signal thread to wait
-    // for all the waiting thread(s) to wake up and be released from the
-    // semaphore. 
-
-    size_t was_broadcast_;
-    // Keeps track of whether we were broadcasting or signaling.  This
-    // allows us to optimize the code if we're just signaling.
+    int waiters_count_; /* Number of waiting threads.  */
+    CRITICAL_SECTION waiters_count_lock_; /* Serialize access to <waiters_count_>.  */
+    HANDLE sema_; /* Semaphore used to queue up threads waiting for the condition to
+    		     become signaled.  */
+    HANDLE waiters_done_; /* An auto-reset event used by the broadcast/signal thread to wait
+    			     for all the waiting thread(s) to wake up and be released from the
+    			     semaphore.  */
+    size_t was_broadcast_; /* Keeps track of whether we were broadcasting or signaling.  This
+    			      allows us to optimize the code if we're just signaling.  */
 };
 #endif
 #define PTHREAD_COND_INITIALIZER \
@@ -230,13 +225,13 @@ struct pthread_cond_t
 
 typedef struct pthread_rwlock_t pthread_rwlock_t;
 struct pthread_rwlock_t {
-    int                 readers;  
-    int                 writers;  
-    int                 readers_count; // Number of waiting readers
-    int                 writers_count; // Number of waiting writers
-    pthread_mutex_t     m;
-    pthread_cond_t      cr;
-    pthread_cond_t      cw;
+    int readers;
+    int writers;
+    int readers_count;	/* Number of waiting readers,  */
+    int writers_count;	/* Number of waiting writers.  */
+    pthread_mutex_t m;
+    pthread_cond_t cr;
+    pthread_cond_t cw;
 };
 
 #define PTHREAD_RWLOCK_INITIALIZER \
@@ -262,29 +257,6 @@ struct pthread_attr_t
     size_t s_size;
 };
 
-
-typedef struct _pthread_cleanup _pthread_cleanup;
-struct _pthread_cleanup
-{
-    void (*func)(pthread_once_t *);
-    void *arg;
-    _pthread_cleanup *next;
-};
-
-struct _pthread_v
-{
-    void *ret_arg;
-    void *(* func)(void *);
-    _pthread_cleanup *clean;
-    HANDLE h;
-    int cancelled;
-    unsigned p_state;
-    unsigned int keymax;
-    void **keyval;
-	int tid;
-
-    jmp_buf jb;
-};
 
 int pthread_rwlock_wrlock(pthread_rwlock_t *l);
 
@@ -429,11 +401,11 @@ int pthread_barrierattr_setpshared(void **attr, int s);
 int pthread_barrierattr_getpshared(void **attr, int *s);
 
 
-/* Windows has rudimentary signals support */
+/* Windows has rudimentary signals support.  */
 #define pthread_kill(T, S) 0
 #define pthread_sigmask(H, S1, S2) 0
  
-/* Wrap cancellation points */
+/* Wrap cancellation points.  */
 #ifdef __WINPTRHEAD_ENABLE_WRAP_API
 #define accept(...) (pthread_testcancel(), accept(__VA_ARGS__))
 #define aio_suspend(...) (pthread_testcancel(), aio_suspend(__VA_ARGS__))

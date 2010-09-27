@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "../pthreads.h"
+#include "../pthread.h"
 
 #define MAX_THREAD 1000
 #define N_THREAD 40
@@ -366,6 +367,7 @@ int main(int argc, char * argv[]) {
 	if (argc < 2)
 	{
 		printf ("Usage: %s <name>\nwhere <name> is test name\n",argv[0]);
+		printf ("test names are: thread, rwlock, rwlockTimed, condTimed.\n");
 		exit(1);
 	}
 	strcpy(testType, "default");

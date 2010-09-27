@@ -16,7 +16,7 @@ int pthread_spin_destroy(pthread_spinlock_t *l)
     return 0;
 }
 
-/* No-fair spinlock due to lack of knowledge of thread number */
+/* No-fair spinlock due to lack of knowledge of thread number.  */
 int pthread_spin_lock(pthread_spinlock_t *l)
 {
   union doVol {
@@ -46,7 +46,7 @@ int pthread_spin_trylock(pthread_spinlock_t *l)
 
 int pthread_spin_unlock(pthread_spinlock_t *l)
 {
-    /* Compiler barrier.  The store below acts with release symmantics */
+    /* Compiler barrier.  The store below acts with release symmantics.  */
     _ReadWriteBarrier();
 
     *l = 0;
