@@ -97,21 +97,35 @@ int pthread_mutex_trylock(pthread_mutex_t *m)
 
 int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 {
+ 	int r = 0;
     (void) a;
 
     if (!m) return EINVAL;
     if (m->valid) return EBUSY;
-    m->h = CreateMutex(NULL, FALSE, NULL);
-    m->owner = NULL;
-    m->type = 0;
+   
+	m->type = PTHREAD_MUTEX_DEFAULT;
 	if (a) {
-		pthread_mutexattr_gettype(a, &m->type) 
+		r = pthread_mutexattr_gettype(a, &m->type);
 	}
-    m->valid = 1;
+	if (!r) {
+		if ( (m->h = CreateMutex(NULL, FALSE, NULL)) == NULL) {
+			switch (GetLastError()) {
+			case ERROR_ALREADY_EXISTS:
+					r = EBUSY;
+					break;
+			case ERROR_ACCESS_DENIED:
+					r = EPERM;
+					break;
+			default: /* OK, this might not be accurate, but .. */
+					r = ENOMEM;
+			}
+		}
+	}
+	if (!r) {
+		m->owner = NULL;
+	}
 
-    CHECK_MUTEX(m);
-
-    return 0;
+    return r;
 }
 
 int pthread_mutex_destroy(pthread_mutex_t *m)
@@ -176,6 +190,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 		ct = _pthread_time_in_ms();
 	}
 	SET_OWNER(m);
+	return 0;
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *m)
@@ -195,21 +210,28 @@ int pthread_mutex_trylock(pthread_mutex_t *m)
 
 int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 {
+	int r = 0;
 	(void) a;
-	InitializeCriticalSection(&m->cs);
-    m->valid = 1;
-    m->type = 0;
-    m->owner = NULL;
+	m->type = PTHREAD_MUTEX_DEFAULT;
 	if (a) {
-		pthread_mutexattr_gettype(a, &m->type);
+		r = pthread_mutexattr_gettype(a, &m->type);
+	}
+	if (!r) {
+		InitializeCriticalSection(&m->cs);
+		m->valid = 1;
+		m->owner = NULL;
 	}
 	
-	return 0;
+	return r;
 }
 
 int pthread_mutex_destroy(pthread_mutex_t *m)
 {
-    m->valid = 0;
+	if (m->owner) {
+		/* Works only in non-recursive case currently */
+		return EBUSY;
+	}
+    m->type = m->valid = 0;
 	DeleteCriticalSection(&m->cs);
 	return 0;
 }
@@ -237,6 +259,8 @@ int pthread_mutexattr_gettype(pthread_mutexattr_t *a, int *type)
 int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type)
 {
     if ((unsigned) type > 3) return EINVAL;
+	/* We support DEFAULT==ERRORCHECK semantics + RECURSIVE: */
+    if ((unsigned) type == PTHREAD_MUTEX_NORMAL) return ENOTSUP;
     *a &= ~3;
     *a |= type;
 
