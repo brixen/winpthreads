@@ -185,6 +185,8 @@ typedef struct pthread_mutex_t pthread_mutex_t;
 struct pthread_mutex_t
 {
     int valid;   
+    int type;   
+	pthread_t owner;
 #if defined USE_MUTEX_Mutex
     HANDLE h;
 #else /* USE_MUTEX_CriticalSection.  */
