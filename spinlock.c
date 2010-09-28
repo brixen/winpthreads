@@ -1,4 +1,4 @@
-#include "pthreads.h"
+#include "pthread.h"
 #include "spinlock.h"
 #include "misc.h"
       

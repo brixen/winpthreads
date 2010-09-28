@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "pthreads.h"
+#include "pthread.h"
 #include "mutex.h"
 #include "misc.h"
 

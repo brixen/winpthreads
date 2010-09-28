@@ -1,4 +1,4 @@
-#include "pthreads.h"
+#include "pthread.h"
 #include "misc.h"
 #include "barrier.h" 
 

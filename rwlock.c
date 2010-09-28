@@ -1,5 +1,5 @@
-#include "pthreads.h"
 #include "pthread.h"
+#include "thread.h"
 #include "rwlock.h"
 #include "misc.h"
 

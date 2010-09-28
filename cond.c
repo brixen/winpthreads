@@ -3,7 +3,7 @@
  * 22-9-2010 Partly based on the ACE framework implementation.
  */
 #include <stdio.h>
-#include "pthreads.h"
+#include "pthread.h"
 #include "cond.h"
 
 #include "misc.h"

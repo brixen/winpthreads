@@ -1,5 +1,5 @@
-pthread.o: pthread.c
-	gcc -c pthread.c
+thread.o: thread.c
+	gcc -c thread.c
 
 mutex.o: mutex.c
 	gcc -c mutex.c
@@ -19,10 +19,10 @@ spinlock.o: spinlock.c
 misc.o: misc.c
 	gcc -c misc.c
 
-libpthreads.a: pthread.o mutex.o cond.o rwlock.o barrier.o spinlock.o misc.o
-	ar rcs libpthreads.a  misc.o pthread.o mutex.o cond.o rwlock.o barrier.o spinlock.o
+libpthread.a: thread.o mutex.o cond.o rwlock.o barrier.o spinlock.o misc.o
+	ar rcs libpthread.a  misc.o thread.o mutex.o cond.o rwlock.o barrier.o spinlock.o
 
-lib: libpthreads.a	
+lib: libpthread.a	
 
 clean:
 	rm -rf *.o *.a
