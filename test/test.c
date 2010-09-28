@@ -168,6 +168,11 @@ int condTimed_main()
   return 0;
 }
 
+int cond_main()
+{
+  strcpy(testType, "notTimed");
+  return condTimed_main();
+}
 
 /*================================================================================*/
 void *rwlockTimed_rdlockThread(void *arg)
@@ -500,8 +505,8 @@ int main(int argc, char * argv[]) {
 
 	if (argc < 2)
 	{
-		printf ("Usage: %s <name>\nwhere <name> is test name\n",argv[0]);
-		printf ("test names are: thread, rwlock, rwlockTimed, condTimed.\n");
+		printf ("Usage: %s <name> [type]\nwhere <name> is test name\n",argv[0]);
+		printf ("test names are: thread, rwlock, rwlockTimed, cond, condTimed, barrier.\n");
 		exit(1);
 	}
 	strcpy(testType, "default");
@@ -514,6 +519,7 @@ int main(int argc, char * argv[]) {
 	if (strcmp(name, "thread") == 0) thread();
 	else if (strcmp(name, "rwlock") == 0) rwlock_main();
 	else if (strcmp(name, "rwlockTimed") == 0) rwlockTimed_main();
+	else if (strcmp(name, "cond") == 0) cond_main();
 	else if (strcmp(name, "condTimed") == 0) condTimed_main();
 	else if (strcmp(name, "barrier") == 0) barrier_main();
  	else printf ("Unknown test name '%s'\n",name);
