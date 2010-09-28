@@ -77,6 +77,7 @@
 
 #ifdef USE_COND_ConditionVariable
 #undef USE_MUTEX_Mutex
+#undef USE_MUTEX_CriticalSection
 #define USE_MUTEX_CriticalSection
 #undef USE_RWLOCK_pthread_cond
 #define USE_RWLOCK_SRWLock
@@ -87,6 +88,7 @@
 #define USE_MUTEX_CriticalSection
 #undef USE_COND_Semaphore
 #undef USE_COND_SignalObjectAndWait
+#undef USE_COND_ConditionVariable
 #define USE_COND_ConditionVariable
 #endif
 
@@ -259,149 +261,96 @@ struct pthread_attr_t
     size_t s_size;
 };
 
-
-int pthread_rwlock_wrlock(pthread_rwlock_t *l);
-
-int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, struct timespec *ts);
-
-int pthread_rwlock_rdlock(pthread_rwlock_t *l);
-
-int pthread_rwlock_timedrdlock(pthread_rwlock_t *l, struct timespec *ts);
-
-int pthread_rwlock_unlock(pthread_rwlock_t *l);
-
-int pthread_rwlock_tryrdlock(pthread_rwlock_t *l);
-
-int pthread_rwlock_destroy (pthread_rwlock_t *l);
-
-void pthread_testcancel(void);
-
-int pthread_cond_init(pthread_cond_t *cv, pthread_condattr_t *a);
-
-int pthread_cond_destroy(pthread_cond_t *cv);
-
-int pthread_cond_signal (pthread_cond_t *cv);
-
-int pthread_cond_broadcast (pthread_cond_t *cv);
-
-int pthread_cond_wait (pthread_cond_t *cv, pthread_mutex_t *external_mutex);
-
-int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, struct timespec *t);
-
 void (**_pthread_key_dest)(void *);
-
 pthread_t pthread_self(void);
-
 int pthread_once(pthread_once_t *o, void (*func)(void));
-
-int pthread_mutex_lock(pthread_mutex_t *m);
-
-int pthread_mutex_unlock(pthread_mutex_t *m);
-
-int pthread_mutex_trylock(pthread_mutex_t *m);
-
-int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a);
-
-int pthread_mutex_destroy(pthread_mutex_t *m);
-
-int pthread_equal(pthread_t t1, pthread_t t2);
-
-void pthread_tls_init(void);
-
-void _pthread_cleanup_dest(pthread_t t);
-
-pthread_t pthread_self(void);
-
-int pthread_get_concurrency(int *val);
-
-int pthread_set_concurrency(int val);
-
-int pthread_exit(void *res);
-
-void _pthread_invoke_cancel(void);
-
 void pthread_testcancel(void);
-
+int pthread_equal(pthread_t t1, pthread_t t2);
+void pthread_tls_init(void);
+void _pthread_cleanup_dest(pthread_t t);
+pthread_t pthread_self(void);
+int pthread_get_concurrency(int *val);
+int pthread_set_concurrency(int val);
+int pthread_exit(void *res);
+void _pthread_invoke_cancel(void);
+void pthread_testcancel(void);
 int pthread_cancel(pthread_t t);
-
 unsigned _pthread_get_state(pthread_attr_t *attr, unsigned flag);
-
 int _pthread_set_state(pthread_attr_t *attr, unsigned flag, unsigned val);
-
-int pthread_attr_init(pthread_attr_t *attr);
-
-int pthread_attr_destroy(pthread_attr_t *attr);
-
-int pthread_attr_setdetachstate(pthread_attr_t *a, int flag);
-
-int pthread_attr_getdetachstate(pthread_attr_t *a, int *flag);
-
-int pthread_attr_setinheritsched(pthread_attr_t *a, int flag);
-
-int pthread_attr_getinheritsched(pthread_attr_t *a, int *flag);
-
-int pthread_attr_setscope(pthread_attr_t *a, int flag);
-
-int pthread_attr_getscope(pthread_attr_t *a, int *flag);
-
-int pthread_attr_getstackaddr(pthread_attr_t *attr, void **stack);
-
-int pthread_attr_setstackaddr(pthread_attr_t *attr, void *stack);
-
-int pthread_attr_getstacksize(pthread_attr_t *attr, size_t *size);
-
-int pthread_attr_setstacksize(pthread_attr_t *attr, size_t size);
-
 int pthread_setcancelstate(int state, int *oldstate);
-
 int pthread_setcanceltype(int type, int *oldtype);
-
 int pthread_create_wrapper(void *args);
-
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg);
-
 int pthread_join(pthread_t t, void **res);
-
 int pthread_detach(pthread_t t);
 
-int pthread_mutexattr_init(pthread_mutexattr_t *a);
+int pthread_rwlock_wrlock(pthread_rwlock_t *l);
+int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, struct timespec *ts);
+int pthread_rwlock_rdlock(pthread_rwlock_t *l);
+int pthread_rwlock_timedrdlock(pthread_rwlock_t *l, struct timespec *ts);
+int pthread_rwlock_unlock(pthread_rwlock_t *l);
+int pthread_rwlock_tryrdlock(pthread_rwlock_t *l);
+int pthread_rwlock_destroy (pthread_rwlock_t *l);
 
-int pthread_mutexattr_destroy(pthread_mutexattr_t *a);
+int pthread_cond_init(pthread_cond_t *cv, pthread_condattr_t *a);
+int pthread_cond_destroy(pthread_cond_t *cv);
+int pthread_cond_signal (pthread_cond_t *cv);
+int pthread_cond_broadcast (pthread_cond_t *cv);
+int pthread_cond_wait (pthread_cond_t *cv, pthread_mutex_t *external_mutex);
+int pthread_cond_timedwait(pthread_cond_t *cv, pthread_mutex_t *external_mutex, struct timespec *t);
 
-int pthread_mutexattr_gettype(pthread_mutexattr_t *a, int *type);
-
-int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type);
-
-int pthread_mutexattr_getpshared(pthread_mutexattr_t *a, int *type);
-
-int pthread_mutexattr_setpshared(pthread_mutexattr_t * a, int type);
-
-int pthread_mutexattr_getprotocol(pthread_mutexattr_t *a, int *type);
-
-int pthread_mutexattr_setprotocol(pthread_mutexattr_t *a, int type);
-
-int pthread_mutexattr_getprioceiling(pthread_mutexattr_t *a, int * prio);
-
-int pthread_mutexattr_setprioceiling(pthread_mutexattr_t *a, int prio);
-
+int pthread_mutex_lock(pthread_mutex_t *m);
 int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts);
-
-int pthread_barrier_destroy(pthread_barrier_t *b);
-
-int pthread_barrier_init(pthread_barrier_t *b, void *attr, int count);
+int pthread_mutex_unlock(pthread_mutex_t *m);
+int pthread_mutex_trylock(pthread_mutex_t *m);
+int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a);
+int pthread_mutex_destroy(pthread_mutex_t *m);
 
 #define _PTHREAD_BARRIER_FLAG (1<<30)
-
+int pthread_barrier_destroy(pthread_barrier_t *b);
+int pthread_barrier_init(pthread_barrier_t *b, void *attr, int count);
 int pthread_barrier_wait(pthread_barrier_t *b);
 
+int pthread_spin_init(pthread_spinlock_t *l, int pshared);
+int pthread_spin_destroy(pthread_spinlock_t *l);
+/* No-fair spinlock due to lack of knowledge of thread number.  */
+int pthread_spin_lock(pthread_spinlock_t *l);
+int pthread_spin_trylock(pthread_spinlock_t *l);
+int pthread_spin_unlock(pthread_spinlock_t *l);
+
+int pthread_attr_init(pthread_attr_t *attr);
+int pthread_attr_destroy(pthread_attr_t *attr);
+int pthread_attr_setdetachstate(pthread_attr_t *a, int flag);
+int pthread_attr_getdetachstate(pthread_attr_t *a, int *flag);
+int pthread_attr_setinheritsched(pthread_attr_t *a, int flag);
+int pthread_attr_getinheritsched(pthread_attr_t *a, int *flag);
+int pthread_attr_setscope(pthread_attr_t *a, int flag);
+int pthread_attr_getscope(pthread_attr_t *a, int *flag);
+int pthread_attr_getstackaddr(pthread_attr_t *attr, void **stack);
+int pthread_attr_setstackaddr(pthread_attr_t *attr, void *stack);
+int pthread_attr_getstacksize(pthread_attr_t *attr, size_t *size);
+int pthread_attr_setstacksize(pthread_attr_t *attr, size_t size);
+
+int pthread_mutexattr_init(pthread_mutexattr_t *a);
+int pthread_mutexattr_destroy(pthread_mutexattr_t *a);
+int pthread_mutexattr_gettype(pthread_mutexattr_t *a, int *type);
+int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type);
+int pthread_mutexattr_getpshared(pthread_mutexattr_t *a, int *type);
+int pthread_mutexattr_setpshared(pthread_mutexattr_t * a, int type);
+int pthread_mutexattr_getprotocol(pthread_mutexattr_t *a, int *type);
+int pthread_mutexattr_setprotocol(pthread_mutexattr_t *a, int type);
+int pthread_mutexattr_getprioceiling(pthread_mutexattr_t *a, int * prio);
+int pthread_mutexattr_setprioceiling(pthread_mutexattr_t *a, int prio);
+
+int pthread_condattr_destroy(pthread_condattr_t *a);
+int pthread_condattr_init(pthread_condattr_t *a);
+int pthread_condattr_getpshared(pthread_condattr_t *a, int *s);
+int pthread_condattr_setpshared(pthread_condattr_t *a, int s);
+
 int pthread_barrierattr_init(void **attr);
-
 int pthread_barrierattr_destroy(void **attr);
-
 int pthread_barrierattr_setpshared(void **attr, int s);
-
 int pthread_barrierattr_getpshared(void **attr, int *s);
-
 
 /* Windows has rudimentary signals support.  */
 #define pthread_kill(T, S) 0

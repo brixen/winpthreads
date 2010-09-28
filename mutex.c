@@ -11,7 +11,6 @@ int pthread_mutex_lock(pthread_mutex_t *m)
 	CHECK_DEADLK(m);
     switch (WaitForSingleObject(m->h, INFINITE)) {
         case WAIT_ABANDONED:
-			printf("pthread_mutex_unlock WAIT_ABANDONED GetLastError %d\n",GetLastError());
             return EINVAL;
             break;
         case WAIT_OBJECT_0:
@@ -19,11 +18,9 @@ int pthread_mutex_lock(pthread_mutex_t *m)
             return 0;
             break;
         case WAIT_FAILED:
-			printf("pthread_mutex_unlock WAIT_FAILED GetLastError %d\n",GetLastError());
             return EINVAL;
             break;
     }
-	printf("pthread_mutex_unlock GetLastError %d\n",GetLastError());
     return EINVAL;
 }
 
