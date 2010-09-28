@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <time.h>
-#include "../pthreads.h"
 #include "../pthread.h"
+#include "../thread.h"
 
 #define MAX_THREAD 1000
 #define N_THREAD 40
