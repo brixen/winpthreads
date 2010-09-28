@@ -325,6 +325,140 @@ int rwlock_main(void)
   printf("Main completed\n");
   return 0;
 }
+
+/*================================================================================*/
+#define BARRIER_NTHREADS 20
+
+#define BARRIER_ROUNDS 20
+
+static pthread_barrier_t barriers[BARRIER_NTHREADS];
+
+static pthread_mutex_t lock;
+static int counters[BARRIER_NTHREADS];
+static int serial[BARRIER_NTHREADS];
+
+
+
+void *barrier_Thread(void *arg)
+{
+    void *result = NULL;
+    int nr = (int) arg;
+    int i;
+
+    for (i = 0; i < BARRIER_ROUNDS; ++i)
+    {
+        int j;
+        int retval;
+
+        if (nr == 0)
+        {
+            memset (counters, '\0', sizeof (counters));
+            memset (serial, '\0', sizeof (serial));
+        }
+
+        retval = pthread_barrier_wait (&barriers[BARRIER_NTHREADS - 1]);
+        if (retval != 0 && retval != PTHREAD_BARRIER_SERIAL_THREAD)
+        {
+            printf ("thread %d failed to wait for all the others\n", nr);
+            result = (void *) 1;
+        }
+
+        for (j = nr; j < BARRIER_NTHREADS; ++j)
+        {
+            /* Increment the counter for this round.  */
+            pthread_mutex_lock (&lock);
+            ++counters[j];
+            pthread_mutex_unlock (&lock);
+
+            /* Wait for the rest.  */
+            retval = pthread_barrier_wait (&barriers[j]);
+
+            /* Test the result.  */
+            if (nr == 0 && counters[j] != j + 1)
+            {
+                printf ("barrier in round %d released but count is %d\n",
+                        j, counters[j]);
+                result = (void *) 1;
+            }
+
+            if (retval != 0)
+            {
+                if (retval != PTHREAD_BARRIER_SERIAL_THREAD)
+                {
+                    printf ("thread %d in round %d has nonzero return value != PTHREAD_BARRIER_SERIAL_THREAD\n",
+                            nr, j);
+                    result = (void *) 1;
+                }
+                else
+                {
+                    pthread_mutex_lock (&lock);
+                    ++serial[j];
+                    pthread_mutex_unlock (&lock);
+                }
+            }
+
+            /* Wait for the rest again.  */
+            retval = pthread_barrier_wait (&barriers[j]);
+
+            /* Now we can check whether exactly one thread was serializing.  */
+            if (nr == 0 && serial[j] != 1)
+            {
+                printf ("not exactly one serial thread in round %d\n", j);
+                result = (void *) 1;
+            }
+        }
+    }
+
+    return result;
+}
+
+int barrier_main(void)
+{
+	int                   rc=0;
+	pthread_t threads[BARRIER_NTHREADS];
+	int i;
+	void *res;
+	int result = 0;
+
+
+	printf("Enter Testcase - barrier_main %s\n",testType);
+
+	rc = pthread_mutex_init (&lock, NULL);
+	checkResults("pthread_mutex_init()\n", rc);
+
+	/* Initialized the barrier variables.  */
+	for (i = 0; i < BARRIER_NTHREADS; ++i) {
+		if (pthread_barrier_init (&barriers[i], NULL, i + 1) != 0)
+		{
+			printf ("Failed to initialize barrier %d\n", i);
+			exit (1);
+		}
+	}
+
+	/* Start the threads.  */
+	for (i = 0; i < BARRIER_NTHREADS; ++i) {
+		if (pthread_create (&threads[i], NULL, barrier_Thread, (void *) i) != 0)
+		{
+			printf ("Failed to start thread %d\n", i);
+			exit (1);
+		}
+	}
+
+	/* And wait for them.  */
+	for (i = 0; i < BARRIER_NTHREADS; ++i) {
+		if (pthread_join (threads[i], &res) != 0 || res != NULL)
+		{
+			printf ("thread %d returned a failure\n", i);
+			result = 1;
+		}
+	}
+
+	if (result == 0)
+		puts ("all OK");
+
+	return result;
+
+}
 /*================================================================================*/
 void thread(void)
 {
@@ -381,6 +515,7 @@ int main(int argc, char * argv[]) {
 	else if (strcmp(name, "rwlock") == 0) rwlock_main();
 	else if (strcmp(name, "rwlockTimed") == 0) rwlockTimed_main();
 	else if (strcmp(name, "condTimed") == 0) condTimed_main();
+	else if (strcmp(name, "barrier") == 0) barrier_main();
  	else printf ("Unknown test name '%s'\n",name);
     return 0;
 }
