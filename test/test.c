@@ -229,7 +229,7 @@ int rwlockTimed_main(void)
   checkResults("pthread_create\n", rc);
 
   printf("Main, wait a bit holding the write lock\n");
-  Sleep(3001);
+  Sleep(2000);
 
   printf("Main, Now unlock the write lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
@@ -312,7 +312,6 @@ int rwlock_main(void)
   rc = pthread_create(&thread1, NULL, rwlock_wrlockThread, NULL);
   checkResults("pthread_create\n", rc);
 
-  Sleep(5);
   printf("Main - unlock the second read lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
   checkResults("pthread_rwlock_unlock()\n", rc);
@@ -347,7 +346,7 @@ static int serial[BARRIER_NTHREADS];
 void *barrier_Thread(void *arg)
 {
     void *result = NULL;
-    int nr = (int) arg;
+    int nr = (int)(uintptr_t)arg;
     int i;
 
     for (i = 0; i < BARRIER_ROUNDS; ++i)
@@ -442,7 +441,7 @@ int barrier_main(void)
 
 	/* Start the threads.  */
 	for (i = 0; i < BARRIER_NTHREADS; ++i) {
-		if (pthread_create (&threads[i], NULL, barrier_Thread, (void *) i) != 0)
+		if (pthread_create (&threads[i], NULL, barrier_Thread, (void *)(uintptr_t)i) != 0)
 		{
 			printf ("Failed to start thread %d\n", i);
 			exit (1);
