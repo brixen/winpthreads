@@ -70,25 +70,29 @@
 
 #ifdef USE_COND_SignalObjectAndWait
 #undef USE_MUTEX_CriticalSection
-#define USE_MUTEX_Mutex
+#undef USE_MUTEX_Mutex
 #undef USE_RWLOCK_SRWLock
+#undef USE_RWLOCK_pthread_cond
+#define USE_MUTEX_Mutex
 #define USE_RWLOCK_pthread_cond
 #endif
 
 #ifdef USE_COND_ConditionVariable
 #undef USE_MUTEX_Mutex
 #undef USE_MUTEX_CriticalSection
-#define USE_MUTEX_CriticalSection
 #undef USE_RWLOCK_pthread_cond
+#undef USE_RWLOCK_SRWLock
+#define USE_MUTEX_CriticalSection
 #define USE_RWLOCK_SRWLock
 #endif
 
 #ifdef USE_RWLOCK_SRWLock
 #undef USE_MUTEX_Mutex
-#define USE_MUTEX_CriticalSection
+#undef USE_MUTEX_CriticalSection
 #undef USE_COND_Semaphore
 #undef USE_COND_SignalObjectAndWait
 #undef USE_COND_ConditionVariable
+#define USE_MUTEX_CriticalSection
 #define USE_COND_ConditionVariable
 #endif
 
