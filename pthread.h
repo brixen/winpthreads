@@ -45,7 +45,13 @@
 
 #include <sys/timeb.h>
 
+#define WINPTHREAD_DBG 1
+
 /* Compatibility stuff: */
+/* deadlock detection is optional for spinlocks */
+#define USE_SPINLOCK_DEADLK 1
+/* checking if de calling thread holds the lock at unlock is optional */
+#define USE_SPINLOCK_EPERM	1
 
 /* A few ways to implement pthread_mutex:  */
 //#define USE_MUTEX_Mutex 1
@@ -55,9 +61,9 @@
 /* default.  */
 #define USE_COND_Semaphore 1
 /* USE_COND_SignalObjectAndWait has a flaw at timeout, hopefully fixed.  */
-/* #define USE_COND_SignalObjectAndWait 1 */
+//#define USE_COND_SignalObjectAndWait 1
 /* USE_COND_ConditionVariable is Windows Vista+, NOT cross-process.  */
-/* #define USE_COND_ConditionVariable 1 */
+//#define USE_COND_ConditionVariable 1
 
 /* A few ways to implement pthread_rwlock:  */
 /* default, use pthread_cond above.  */
@@ -66,6 +72,10 @@
 /* #define USE_RWLOCK_SRWLock 1 */
 
 /* Dependencies:  */
+#ifdef USE_SPINLOCK_EPERM /* need the owner */
+#undef USE_SPINLOCK_DEADLK
+#define USE_SPINLOCK_DEADLK 1
+#endif
 
 #ifdef USE_COND_SignalObjectAndWait
 #undef USE_MUTEX_CriticalSection
@@ -74,25 +84,6 @@
 #undef USE_RWLOCK_pthread_cond
 #define USE_MUTEX_Mutex
 #define USE_RWLOCK_pthread_cond
-#endif
-
-#ifdef USE_COND_ConditionVariable
-#undef USE_MUTEX_Mutex
-#undef USE_MUTEX_CriticalSection
-#undef USE_RWLOCK_pthread_cond
-#undef USE_RWLOCK_SRWLock
-#define USE_MUTEX_CriticalSection
-#define USE_RWLOCK_SRWLock
-#endif
-
-#ifdef USE_RWLOCK_SRWLock
-#undef USE_MUTEX_Mutex
-#undef USE_MUTEX_CriticalSection
-#undef USE_COND_Semaphore
-#undef USE_COND_SignalObjectAndWait
-#undef USE_COND_ConditionVariable
-#define USE_MUTEX_CriticalSection
-#define USE_COND_ConditionVariable
 #endif
 
 /* Error-codes.  */
@@ -166,7 +157,6 @@ typedef long pthread_once_t;
 typedef unsigned pthread_mutexattr_t;
 typedef unsigned pthread_key_t;
 typedef void *pthread_barrierattr_t;
-typedef long pthread_spinlock_t;
 typedef int pthread_condattr_t;
 typedef int pthread_rwlockattr_t;
 typedef struct _pthread_v *pthread_t;
@@ -185,12 +175,13 @@ struct itimerspec {
 };
 #endif
 
+typedef struct spin_t	*pthread_spinlock_t;
 typedef struct mutex_t	*pthread_mutex_t;
 typedef struct cond_t	*pthread_cond_t;
 
 #define GENERIC_INITIALIZER (void *)(uintptr_t)(-1)
-#define PTHREAD_MUTEX_INITIALIZER	GENERIC_INITIALIZER
-#define PTHREAD_COND_INITIALIZER	GENERIC_INITIALIZER
+#define PTHREAD_MUTEX_INITIALIZER	(mutex_t *)GENERIC_INITIALIZER
+#define PTHREAD_COND_INITIALIZER	(cond_t *)GENERIC_INITIALIZER
 
 typedef struct pthread_rwlock_t pthread_rwlock_t;
 struct pthread_rwlock_t {

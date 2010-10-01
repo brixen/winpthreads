@@ -4,7 +4,7 @@
 #include "mutex.h"
 #include "misc.h"
 
-static inline int mutex_static_init(pthread_mutex_t *m)
+inline int mutex_static_init(volatile pthread_mutex_t *m)
 {
     pthread_mutex_t m_tmp, *m_replaced;
 	int r = pthread_mutex_init(&m_tmp, NULL);
@@ -14,7 +14,7 @@ static inline int mutex_static_init(pthread_mutex_t *m)
 			(PVOID *)m, 
 			m_tmp,
 			PTHREAD_MUTEX_INITIALIZER);
-		if (m_replaced != PTHREAD_MUTEX_INITIALIZER) {
+		if (m_replaced != (pthread_mutex_t *)PTHREAD_MUTEX_INITIALIZER) {
 			printf("mutex_static_init race detected: mutex %p\n",  m_replaced);
 			/* someone crept in between: */
 			pthread_mutex_destroy(&m_tmp);
@@ -148,7 +148,7 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 					r = ENOMEM;
 			}
 		} else {
-			_m->owner = NULL;
+			_m->owner = 0;
 			_m->valid = LIFE_MUTEX;
 			*m = _m;
 		}
@@ -238,7 +238,15 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
 	CHECK_MUTEX(m); 
 	mutex_t *_m = (mutex_t *)*m;
 	UNSET_OWNER(_m);
+#ifdef WINPTHREAD_DBG
+	_pthread_crit_u cu;
+	cu.cs = &_m->cs;
+	printf("owner before LeaveCriticalSection: %ld\n",cu.cs->OwningThread);
+#endif
 	LeaveCriticalSection(&_m->cs);
+#ifdef WINPTHREAD_DBG
+	printf("owner after LeaveCriticalSection: %ld\n",cu.cs->OwningThread);
+#endif
 	return 0;
 }
 	
@@ -271,7 +279,7 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 	if (!r) {
 		InitializeCriticalSection(&_m->cs);
 
-		_m->owner = NULL;
+		_m->owner = 0;
 		_m->valid = LIFE_MUTEX;
 		*m = _m;
 	} else {

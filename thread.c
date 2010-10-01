@@ -303,6 +303,7 @@ pthread_t pthread_self(void)
         t->keymax = 0;
         t->keyval = NULL;
         t->h = GetCurrentThread();
+        t->tid = GetCurrentThreadId();
 
         /* Save for later */
         TlsSetValue(_pthread_tls, t);
@@ -531,6 +532,7 @@ int pthread_create_wrapper(void *args)
     _pthread_once_raw(&_pthread_tls_once, pthread_tls_init);
 
     TlsSetValue(_pthread_tls, tv);
+    tv->tid = GetCurrentThreadId();
 
     if (!setjmp(tv->jb))
     {
@@ -556,7 +558,6 @@ int pthread_create_wrapper(void *args)
 
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
 {
-    static int tid = 0;
 	struct _pthread_v *tv = (struct _pthread_v *)malloc(sizeof(struct _pthread_v));
     size_t ssize = 0;
 
@@ -575,7 +576,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     tv->keymax = 0;
     tv->keyval = NULL;
     tv->h = (HANDLE) -1;
-    tv->tid =tid++;
+    tv->tid = 0;
 
     if (attr)
     {
