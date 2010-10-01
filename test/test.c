@@ -2,6 +2,8 @@
 #include <time.h>
 #include "../pthread.h"
 #include "../thread.h"
+#include "../mutex.h"
+#include "../cond.h"
 
 #define MAX_THREAD 1000
 #define N_THREAD 40
@@ -27,6 +29,81 @@ void *hello(void *arg)
 pthread_rwlock_t       rwlock;
 char testType[100];
 
+/*================================================================================*/
+#define MUTEX_NTHREADS                10
+pthread_mutex_t         mutex;
+int                     sharedData=0;
+int                     sharedData2=0;
+
+void *mutex_threadfunc(void *parm)
+{
+   int   rc;
+   int tid = pthread_self()->tid;
+   printf("Thread %d: Entered\n", tid);
+   rc = pthread_mutex_lock(&mutex);
+   checkResults("pthread_mutex_lock()\n", rc);
+   /********** Critical Section *******************/
+   printf("Thread %d: Start critical section, holding lock\n",
+          tid);
+   /* Access to shared data goes here */
+   ++sharedData; --sharedData2;
+   printf("Thread %d: End critical section, release lock\n",
+          tid);
+   /********** Critical Section *******************/
+   rc = pthread_mutex_unlock(&mutex);
+   checkResults("pthread_mutex_unlock()\n", rc);
+   return NULL;
+}
+ 
+int mutex_main(void)
+{
+	pthread_t             thread[MUTEX_NTHREADS];
+	int                   rc=0;
+	int                   i;
+
+	printf("Enter Testcase - mutex_main %s\n",testType);
+	if (strcmp(testType,"static") == 0) {
+		mutex = PTHREAD_MUTEX_INITIALIZER;
+		printf("Mutex inited static\n");
+	} else {
+		rc = pthread_mutex_init(&mutex,NULL);
+		printf("Mutex inited\n");
+		checkResults("pthread_mutex_init()\n", rc);
+	}
+
+	printf("Hold Mutex to prevent access to shared data\n");
+	rc = pthread_mutex_lock(&mutex);
+	printf("Unlock Mutex to prevent access to shared data\n");
+	checkResults("pthread_mutex_lock()\n", rc);
+	rc = pthread_mutex_unlock(&mutex);
+	checkResults("pthread_mutex_unlock()\n",rc);
+	printf("Hold Mutex to prevent access to shared data 2\n");
+	rc = pthread_mutex_lock(&mutex);
+	checkResults("pthread_mutex_lock() 2\n", rc);
+
+	printf("Create/start threads\n");
+	for (i=0; i<MUTEX_NTHREADS; ++i) {
+		rc = pthread_create(&thread[i], NULL, mutex_threadfunc, NULL);
+		checkResults("pthread_create()\n", rc);
+	}
+
+	printf("Wait a bit until we are 'done' with the shared data\n");
+	Sleep(3000);
+	printf("Unlock shared data\n");
+	rc = pthread_mutex_unlock(&mutex);
+	checkResults("pthread_mutex_lock()\n",rc);
+
+	printf("Wait for the threads to complete, and release their resources\n");
+	for (i=0; i <MUTEX_NTHREADS; ++i) {
+		rc = pthread_join(thread[i], NULL);
+		checkResults("pthread_join()\n", rc);
+	}
+
+	printf("Clean up\n");
+	rc = pthread_mutex_destroy(&mutex);
+	printf("Main completed\n");
+	return 0;
+}
 /*================================================================================*/
 #define COND_NTHREADS                3
 #define COND_WAIT_TIME_SECONDS       10
@@ -144,10 +221,10 @@ int condTimed_main()
   checkResults("pthread_mutex_unlock()\n", rc);
 
   Sleep(10000);
-  printf("Broadcast leave to all threads, waiters=%d\n",cond.waiters_count_);
+  printf("Broadcast leave to all threads, waiters=%d\n",cond->waiters_count_);
   workLeave = 1;
   rc = pthread_cond_broadcast(&cond);
-   printf("Broadcast done, waiters=%d\n",cond.waiters_count_);
+   printf("Broadcast done, waiters=%d\n",cond->waiters_count_);
   checkResults("pthread_cond_broadcast()\n", rc);
   printf("Try steal a signal 2, should timeout\n");
   rc = pthread_mutex_lock(&mutex);
@@ -161,7 +238,7 @@ int condTimed_main()
     checkResults("pthread_join()\n", rc);
   }
 
-  printf("Exit, waiters=%d\n",cond.waiters_count_);
+  printf("Exit, waiters=%d\n",cond->waiters_count_);
   pthread_cond_destroy(&cond);
   pthread_mutex_destroy(&mutex);
   printf("Main completed\n");
@@ -505,7 +582,7 @@ int main(int argc, char * argv[]) {
 	if (argc < 2)
 	{
 		printf ("Usage: %s <name> [type]\nwhere <name> is test name\n",argv[0]);
-		printf ("test names are: thread, rwlock, rwlockTimed, cond, condTimed, barrier.\n");
+		printf ("test names are: thread, rwlock, rwlockTimed, cond, condTimed, barrier, mutex.\n");
 		exit(1);
 	}
 	strcpy(testType, "default");
@@ -521,6 +598,7 @@ int main(int argc, char * argv[]) {
 	else if (strcmp(name, "cond") == 0) cond_main();
 	else if (strcmp(name, "condTimed") == 0) condTimed_main();
 	else if (strcmp(name, "barrier") == 0) barrier_main();
+	else if (strcmp(name, "mutex") == 0) mutex_main();
  	else printf ("Unknown test name '%s'\n",name);
     return 0;
 }
