@@ -1,6 +1,7 @@
 #ifndef WIN_PTHREAD_H
 #define WIN_PTHREAD_H
 
+#include <windows.h>
 #include <setjmp.h>
 
 /* private non-public types.  */

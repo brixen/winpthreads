@@ -1,20 +1,42 @@
+#include <windows.h>
 #include <stdio.h>
 #include "pthread.h"
 #include "mutex.h"
 #include "misc.h"
 
+static inline int mutex_static_init(pthread_mutex_t *m)
+{
+    pthread_mutex_t m_tmp, *m_replaced;
+	int r = pthread_mutex_init(&m_tmp, NULL);
+
+	if (!r) {
+		m_replaced = (pthread_mutex_t *)InterlockedCompareExchangePointer(
+			(PVOID *)m, 
+			m_tmp,
+			PTHREAD_MUTEX_INITIALIZER);
+		if (m_replaced != PTHREAD_MUTEX_INITIALIZER) {
+			printf("mutex_static_init race detected: mutex %p\n",  m_replaced);
+			/* someone crept in between: */
+			pthread_mutex_destroy(&m_tmp);
+			/* it could even be destroyed: */
+			if (!m_replaced) r = EINVAL;
+		}
+	}
+	return r;
+}
 
 #if defined USE_MUTEX_Mutex
 int pthread_mutex_lock(pthread_mutex_t *m)
 {
-    CHECK_MUTEX(m);
-	CHECK_DEADLK(m);
-    switch (WaitForSingleObject(m->h, INFINITE)) {
+	INIT_MUTEX(m);
+	mutex_t *_m = (mutex_t *)*m;
+	CHECK_DEADLK(_m);
+    switch (WaitForSingleObject(_m->h, INFINITE)) {
         case WAIT_ABANDONED:
             return EINVAL;
             break;
         case WAIT_OBJECT_0:
-			SET_OWNER(m);
+			SET_OWNER(_m);
             return 0;
             break;
         case WAIT_FAILED:
@@ -26,30 +48,33 @@ int pthread_mutex_lock(pthread_mutex_t *m)
 
 int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 {
-    unsigned long long t, ct;
 	int r;
-
-    CHECK_MUTEX(m);
-    CHECK_PTR(ts);
-
-    /* Try to lock it without waiting */
+	unsigned long long t, ct;
+	
+	if (!m)	return EINVAL; 
+	if (!ts) return EINVAL; 
+	mutex_t *_m = (mutex_t *)*m;
+	
+	/* Try to lock it without waiting */
+	/* And also call INIT_MUTEX() for us */
     if ( !(r=pthread_mutex_trylock(m)) ) return 0;
 	if ( r != EBUSY ) return r;
-    ct = _pthread_time_in_ms();
-    t = _pthread_time_in_ms_from_timespec(ts);
-
+	
+	ct = _pthread_time_in_ms();
+	t = _pthread_time_in_ms_from_timespec(ts);
+	
     while (1)
     {
         /* Have we waited long enough? */
         if (ct >= t) return ETIMEDOUT;
-        switch (WaitForSingleObject(m->h, dwMilliSecs(t - ct))) {
+        switch (WaitForSingleObject(_m->h, dwMilliSecs(t - ct))) {
             case WAIT_TIMEOUT:
                 break;
             case WAIT_ABANDONED:
                 return EINVAL;
                 break;
             case WAIT_OBJECT_0:
-				SET_OWNER(m);
+				SET_OWNER(_m);
                 return 0;
                 break;
             case WAIT_FAILED:
@@ -64,20 +89,22 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 
 int pthread_mutex_unlock(pthread_mutex_t *m)
 {
-    CHECK_MUTEX(m);
-    if (!ReleaseMutex(m->h)) {
+	CHECK_MUTEX(m); 
+	mutex_t *_m = (mutex_t *)*m;
+	UNSET_OWNER(_m);
+    if (!ReleaseMutex(_m->h)) {
 		printf("pthread_mutex_unlock GetLastError %d\n",GetLastError());
         return EPERM;
     }
-	UNSET_OWNER(m);
     return 0;
 }
 
 int pthread_mutex_trylock(pthread_mutex_t *m)
 {
-    CHECK_MUTEX(m);
-	CHECK_DEADLK(m);
-    switch (WaitForSingleObject(m->h, 0)) {
+	INIT_MUTEX(m); 
+	mutex_t *_m = (mutex_t *)*m;
+	CHECK_DEADLK(_m);
+    switch (WaitForSingleObject(_m->h, 0)) {
         case WAIT_TIMEOUT:
             return EBUSY;
             break;
@@ -85,7 +112,7 @@ int pthread_mutex_trylock(pthread_mutex_t *m)
             return EINVAL;
             break;
         case WAIT_OBJECT_0:
-			SET_OWNER(m);
+			SET_OWNER(_m);
             return 0;
             break;
         case WAIT_FAILED:
@@ -97,33 +124,38 @@ int pthread_mutex_trylock(pthread_mutex_t *m)
 
 int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 {
- 	int r = 0;
-    (void) a;
+	mutex_t *_m;
 
-    if (!m) return EINVAL;
-    if (m->valid) return EBUSY;
-   
-	m->type = PTHREAD_MUTEX_DEFAULT;
+	int r = 0;
+	(void) a;
+
+	if (!m)	return EINVAL; 
+	if ( !(_m = (pthread_mutex_t)malloc(sizeof(*_m))) ) {
+		return ENOMEM; 
+	}
+
+	_m->type = PTHREAD_MUTEX_DEFAULT; 
 	if (a) {
-		r = pthread_mutexattr_gettype(a, &m->type);
+		r = pthread_mutexattr_gettype(a, &_m->type);
 	}
 	if (!r) {
-		if ( (m->h = CreateMutex(NULL, FALSE, NULL)) == NULL) {
+		if ( (_m->h = CreateMutex(NULL, FALSE, NULL)) == NULL) {
 			switch (GetLastError()) {
-			case ERROR_ALREADY_EXISTS:
-					r = EBUSY;
-					break;
 			case ERROR_ACCESS_DENIED:
 					r = EPERM;
 					break;
-			default: /* OK, this might not be accurate, but .. */
+			default: /* We assume this, to keep it simple: */
 					r = ENOMEM;
 			}
+		} else {
+			_m->owner = NULL;
+			_m->valid = LIFE_MUTEX;
+			*m = _m;
 		}
-	}
-	if (!r) {
-		m->valid = 1;
-		m->owner = NULL;
+	} 
+	if (r) {
+		_m->valid = DEAD_MUTEX;
+		free(_m);
 	}
 
     return r;
@@ -131,21 +163,35 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 
 int pthread_mutex_destroy(pthread_mutex_t *m)
 {
-    CHECK_MUTEX(m);
-	if (m->owner) {
+	mutex_t *_m = (mutex_t *)*m;
+
+	if (!m || !*m)	return EINVAL; 
+	if (*m == PTHREAD_MUTEX_INITIALIZER) {
+		*m = NULL;
+		return 0;
+	}
+	if (_m->owner) {
 		/* Works only in non-recursive case currently */
 		return EBUSY;
 	}
-    CloseHandle(m->h);
-    m->type = m->valid = 0;
-    return 0;
+	pthread_mutex_t *m2 = m;
+	*m = NULL; /* dereference first, free later */
+	_ReadWriteBarrier();
+    _m->valid  = DEAD_MUTEX;
+    _m->type  = 0;
+    CloseHandle(_m->h);
+	free(*m2);
+	return 0;
 }
 #else /* USE_MUTEX_CriticalSection */
 int pthread_mutex_lock(pthread_mutex_t *m)
 {
-	CHECK_DEADLK(m);
-	EnterCriticalSection(&m->cs);
-	SET_OWNER(m);
+	INIT_MUTEX(m);
+	mutex_t *_m = (mutex_t *)*m;
+
+	CHECK_DEADLK(_m);
+	EnterCriticalSection(&_m->cs);
+	SET_OWNER(_m);
 	return 0;
 }
 
@@ -154,17 +200,12 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 	int r;
 	unsigned long long t, ct;
 	
-	struct _pthread_crit_t
-	{
-		void *debug;
-		LONG count;
-		LONG r_count;
-		HANDLE owner;
-		HANDLE sem;
-		ULONG_PTR spin;
-	};
+	if (!m)	return EINVAL; 
+	if (!ts) return EINVAL; 
+	mutex_t *_m = (mutex_t *)*m;
 	
 	/* Try to lock it without waiting */
+	/* And also call INIT_MUTEX() for us */
     if ( !(r=pthread_mutex_trylock(m)) ) return 0;
 	if ( r != EBUSY ) return r;
 	
@@ -173,16 +214,14 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 	
 	while (1)
 	{
-	  	union __cast {
-		  struct _pthread_crit_t *pc;
-		  CRITICAL_SECTION *cs;
-		} c;
+		_pthread_crit_u cu;
+
 		/* Have we waited long enough? */
 		if (ct > t) return ETIMEDOUT;
 		
-		c.cs = &m->cs;
+		cu.cs = &_m->cs;
 		/* Wait on semaphore within critical section */
-		WaitForSingleObject(c.pc->sem, t - ct);
+		WaitForSingleObject(cu.pc->sem, t - ct);
 		
 		/* Try to grab lock */
 		if (!pthread_mutex_trylock(m)) return 0;
@@ -190,37 +229,54 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 		/* Get current time */
 		ct = _pthread_time_in_ms();
 	}
-	SET_OWNER(m);
+	SET_OWNER(_m);
 	return 0;
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *m)
 {
-	LeaveCriticalSection(&m->cs);
-	UNSET_OWNER(m);
+	CHECK_MUTEX(m); 
+	mutex_t *_m = (mutex_t *)*m;
+	UNSET_OWNER(_m);
+	LeaveCriticalSection(&_m->cs);
 	return 0;
 }
 	
 int pthread_mutex_trylock(pthread_mutex_t *m)
 {
-	CHECK_DEADLK(m);
-	int r = TryEnterCriticalSection(&m->cs) ? 0 : EBUSY;
-	if (!r) SET_OWNER(m);
+	INIT_MUTEX(m); 
+	mutex_t *_m = (mutex_t *)*m;
+	CHECK_DEADLK(_m);
+	int r = TryEnterCriticalSection(&_m->cs) ? 0 : EBUSY;
+	if (!r) SET_OWNER(_m);
 	return r;
 }
 
 int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 {
+	mutex_t *_m;
+
 	int r = 0;
 	(void) a;
-	m->type = PTHREAD_MUTEX_DEFAULT;
+
+	if (!m) return EINVAL; 
+	if ( !(_m = (pthread_mutex_t)malloc(sizeof(*_m))) ) {
+		return ENOMEM; 
+	}
+
+	_m->type = PTHREAD_MUTEX_DEFAULT; 
 	if (a) {
-		r = pthread_mutexattr_gettype(a, &m->type);
+		r = pthread_mutexattr_gettype(a, &_m->type);
 	}
 	if (!r) {
-		InitializeCriticalSection(&m->cs);
-		m->valid = 1;
-		m->owner = NULL;
+		InitializeCriticalSection(&_m->cs);
+
+		_m->owner = NULL;
+		_m->valid = LIFE_MUTEX;
+		*m = _m;
+	} else {
+		_m->valid = DEAD_MUTEX;
+		free(_m);
 	}
 	
 	return r;
@@ -228,12 +284,27 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 
 int pthread_mutex_destroy(pthread_mutex_t *m)
 {
-	if (m->owner) {
+	mutex_t *_m = (mutex_t *)*m;
+
+	if (!m || !*m)	return EINVAL; 
+	if (*m == PTHREAD_MUTEX_INITIALIZER) {
+		*m = NULL;
+		return 0;
+	}
+	if (_m->valid != LIFE_MUTEX) {
+		return EINVAL;
+	}
+	if (_m->owner) {
 		/* Works only in non-recursive case currently */
 		return EBUSY;
 	}
-    m->type = m->valid = 0;
-	DeleteCriticalSection(&m->cs);
+	pthread_mutex_t *m2 = m;
+	*m = NULL; /* dereference first, free later */
+	_ReadWriteBarrier();
+    _m->type  = 0;
+    _m->valid  = DEAD_MUTEX;
+	DeleteCriticalSection(&_m->cs);
+	free(*m2);
 	return 0;
 }
 #endif /* USE_MUTEX_Mutex */

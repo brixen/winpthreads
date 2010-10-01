@@ -37,7 +37,6 @@
 #ifndef WIN_PTHREADS
 #define WIN_PTHREADS
 
-#include <windows.h>
 #include <errno.h>
 #include <sys/types.h>
 
@@ -49,7 +48,7 @@
 /* Compatibility stuff: */
 
 /* A few ways to implement pthread_mutex:  */
-/* #define USE_MUTEX_Mutex 1 */
+//#define USE_MUTEX_Mutex 1
 #define USE_MUTEX_CriticalSection 1
 
 /* A few ways to implement pthread_cond:  */
@@ -123,7 +122,6 @@
 #define PTHREAD_CANCELED ((void *) 0xDEADBEEF)
 
 #define PTHREAD_ONCE_INIT 0
-#define PTHREAD_SPINLOCK_INITIALIZER 0
 
 #define PTHREAD_DESTRUCTOR_ITERATIONS 256
 #define PTHREAD_KEYS_MAX (1<<20)
@@ -187,49 +185,12 @@ struct itimerspec {
 };
 #endif
 
-typedef struct pthread_mutex_t pthread_mutex_t;
-struct pthread_mutex_t
-{
-    int valid;   
-    int type;   
-	pthread_t owner;
-#if defined USE_MUTEX_Mutex
-    HANDLE h;
-#else /* USE_MUTEX_CriticalSection.  */
-    CRITICAL_SECTION cs;
-#endif
-};
+typedef struct mutex_t	*pthread_mutex_t;
+typedef struct cond_t	*pthread_cond_t;
 
-#define PTHREAD_MUTEX_INITIALIZER {0,INVALID_HANDLE}
-/* from  http://locklessinc.com/articles/pthreads_on_windows/ : */
-#define CRITICAL_SECTION_INITIALIZER {(void*)-1,-1,0,0,0,0}
-
-#if defined USE_COND_ConditionVariable
-#include "compat.h"
-typedef struct pthread_cond_t pthread_cond_t;
-struct pthread_cond_t
-{
-    int waiters_count_; /* Number of waiting threads.  */
-    CRITICAL_SECTION waiters_count_lock_; /* Serialize access to <waiters_count_>.  */
-    CONDITION_VARIABLE CV;
-};
-#else /* USE_COND_Semaphore default */
-typedef struct pthread_cond_t pthread_cond_t;
-struct pthread_cond_t
-{
-    int waiters_count_; /* Number of waiting threads.  */
-    CRITICAL_SECTION waiters_count_lock_; /* Serialize access to <waiters_count_>.  */
-    HANDLE sema_; /* Semaphore used to queue up threads waiting for the condition to
-    		     become signaled.  */
-    HANDLE waiters_done_; /* An auto-reset event used by the broadcast/signal thread to wait
-    			     for all the waiting thread(s) to wake up and be released from the
-    			     semaphore.  */
-    size_t was_broadcast_; /* Keeps track of whether we were broadcasting or signaling.  This
-    			      allows us to optimize the code if we're just signaling.  */
-};
-#endif
-#define PTHREAD_COND_INITIALIZER \
-    {0,CRITICAL_SECTION_INITIALIZER,INVALID_HANDLE,INVALID_HANDLE,0}
+#define GENERIC_INITIALIZER (void *)(uintptr_t)(-1)
+#define PTHREAD_MUTEX_INITIALIZER	GENERIC_INITIALIZER
+#define PTHREAD_COND_INITIALIZER	GENERIC_INITIALIZER
 
 typedef struct pthread_rwlock_t pthread_rwlock_t;
 struct pthread_rwlock_t {
@@ -242,10 +203,6 @@ struct pthread_rwlock_t {
     pthread_cond_t cw;
 };
 
-#define PTHREAD_RWLOCK_INITIALIZER \
-    {PTHREAD_MUTEX_INITIALIZER,PTHREAD_COND_INITIALIZER,PTHREAD_COND_INITIALIZER,0,0}
-
-
 typedef struct pthread_barrier_t pthread_barrier_t;
 struct pthread_barrier_t
 {
@@ -254,8 +211,6 @@ struct pthread_barrier_t
     pthread_mutex_t m;
     pthread_cond_t c;
 };
-#define PTHREAD_BARRIER_INITIALIZER \
-    {0,0,PTHREAD_MUTEX_INITIALIZER,PTHREAD_COND_INITIALIZER}
 
 typedef struct pthread_attr_t pthread_attr_t;
 struct pthread_attr_t

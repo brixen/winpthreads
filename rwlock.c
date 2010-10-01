@@ -1,3 +1,4 @@
+#include <windows.h>
 #include "pthread.h"
 #include "thread.h"
 #include "rwlock.h"

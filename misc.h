@@ -10,10 +10,6 @@
 
 #define UPD_RESULT(x,r)    { int _r=(x); r = r ? r : _r; }
 
-#define CHECK_MUTEX(m)  { \
-    if (!(m) || (!(m)->valid)) \
-        return EINVAL; }
-
 #define CHECK_RWLOCK(r)  { \
     if (!(r) || (!(m)->valid)) \
         return EINVAL; }
