@@ -246,8 +246,8 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     /* semaphore until <pthread_cond_signal> or <pthread_cond_broadcast> */
     /* are called by another thread. */
     /*dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE); */
-	dwr = dwMilliSecs(_pthread_time_in_ms_from_timespec(t));
-	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded)\n", (int) dwr);
+	dwr = _pthread_rel_time_in_ms(t);
+	printf("pthread_cond_timedwait wait %d ms\n", (int) dwr);
     dwr = SignalObjectAndWait (_m->h, _c->sema_, 3000, FALSE);
 	switch (dwr) {
 	case WAIT_TIMEOUT:
@@ -339,8 +339,8 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m, struct timespe
 	
 	pthread_testcancel();
 	
-	dwr = dwMilliSecs(_pthread_time_in_ms_from_timespec(t));
-	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded for now)\n", (int) dwr); dwr = 3000;
+	dwr = _pthread_rel_time_in_ms(t);
+	printf("pthread_cond_timedwait wait %d ms\n", (int) dwr);
 	if (!SleepConditionVariableCS(&_c->CV,  &_m->cs, dwr)) return ETIMEDOUT;
 	
 	/* We can have a spurious wakeup after the timeout */
@@ -355,23 +355,28 @@ int pthread_cond_signal (pthread_cond_t *c)
 {
     CHECK_COND(c);	
 	cond_t *_c = (cond_t *)*c;
-    int have_waiters = _c->waiters_count_ > 0;
+	EnterCriticalSection (&_c->waiters_count_lock_);
 
-    /* If there aren't any waiters, then this is a no-op.   */
-    if (have_waiters)
+	/* If there aren't any waiters, then this is a no-op.   */
+    if (_c->waiters_count_ > 0) {
         ReleaseSemaphore (_c->sema_, 1, 0);
+	}
+	LeaveCriticalSection (&_c->waiters_count_lock_);
+
     return 0;
 }
 
 int pthread_cond_broadcast (pthread_cond_t *c)
 {
-    CHECK_COND(c);	
+	CHECK_COND(c);	
 	cond_t *_c = (cond_t *)*c;
-    int have_waiters = _c->waiters_count_ > 0;
 
-	/* If there aren't any waiters, then this is a no-op.   */
-    if (have_waiters)
-        ReleaseSemaphore (_c->sema_, _c->waiters_count_, 0);
+	EnterCriticalSection (&_c->waiters_count_lock_);
+    /* If there aren't any waiters, then this is a no-op.   */
+    if (_c->waiters_count_ > 0) {
+        ReleaseSemaphore (_c->sema_, _c->waiters_count_, NULL);
+	}
+	LeaveCriticalSection (&_c->waiters_count_lock_);
     return 0;
 }
 
@@ -386,9 +391,11 @@ int pthread_cond_wait (pthread_cond_t *c,
 	DWORD dwr;
 
 	pthread_testcancel();
-	InterlockedIncrement(&_c->waiters_count_);
 
     pthread_mutex_unlock(external_mutex);
+	EnterCriticalSection (&_c->waiters_count_lock_);
+	_c->waiters_count_++;
+	LeaveCriticalSection (&_c->waiters_count_lock_);
     dwr = WaitForSingleObject(_c->sema_, INFINITE);
 	switch (dwr) {
 	case WAIT_TIMEOUT:
@@ -404,8 +411,10 @@ int pthread_cond_wait (pthread_cond_t *c,
 		/*We can only return EINVAL though it might not be posix compliant  */
 		r = EINVAL;
 	}
+	EnterCriticalSection (&_c->waiters_count_lock_);
+	_c->waiters_count_--;
+	LeaveCriticalSection (&_c->waiters_count_lock_);
     pthread_mutex_lock(external_mutex);
-	InterlockedDecrement(&_c->waiters_count_);
 
     return r;
 }
@@ -417,16 +426,16 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 	cond_t *_c = (cond_t *)*c;
 
 	int r = 0;
+	int i=0;
 	DWORD dwr;
 
-    CHECK_MUTEX(external_mutex);
-	InterlockedIncrement(&_c->waiters_count_);
+	pthread_testcancel();
     pthread_mutex_unlock(external_mutex);
+	EnterCriticalSection (&_c->waiters_count_lock_);
+	_c->waiters_count_++;
+	LeaveCriticalSection (&_c->waiters_count_lock_);
 
-    /*dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE); */
-	dwr = dwMilliSecs(_pthread_time_in_ms_from_timespec(t));
-	printf("pthread_cond_timedwait wait %d ms (3000 hardcoded for now)\n", (int) dwr); dwr = 3000;
-
+	dwr = _pthread_rel_time_in_ms(t);
     dwr = WaitForSingleObject(_c->sema_, dwr);
 	switch (dwr) {
 	case WAIT_TIMEOUT:
@@ -442,9 +451,10 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 		/*We can only return EINVAL though it might not be posix compliant  */
 		r = EINVAL;
 	}
-    printf("pthread_cond_timedwait: WaitForSingleObject() rc=%d\n",r);
+	EnterCriticalSection (&_c->waiters_count_lock_);
+	_c->waiters_count_--;
+	LeaveCriticalSection (&_c->waiters_count_lock_);
     pthread_mutex_lock(external_mutex);
-	InterlockedDecrement(&_c->waiters_count_);
 
 	return r;
 }

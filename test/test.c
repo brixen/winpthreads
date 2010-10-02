@@ -189,14 +189,27 @@ int mutex_main(void)
 	printf("Main completed\n");
 	return 0;
 }
+#if 1
 /*================================================================================*/
 #define COND_NTHREADS                3
 #define COND_WAIT_TIME_SECONDS       10
 
+
+struct timespec *starttimer(struct timespec *ts, DWORD ms)
+{
+	struct timeval    tp;
+    /* Convert from timeval to timespec */
+	gettimeofday(&tp, NULL);
+    ts->tv_sec  = tp.tv_sec;
+    ts->tv_nsec = tp.tv_usec * 1000;
+    ts->tv_sec += ms  / 1000;
+	return ts;
+}
+
 int                 workToDo = 0;
 int                 workLeave = 0;
-pthread_cond_t      cond=PTHREAD_COND_INITIALIZER;
-pthread_mutex_t     mutex=PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t      cond;
+pthread_mutex_t     mutex;
 
 void *condTimed_threadfunc(void *parm)
 {
@@ -224,8 +237,8 @@ void *condTimed_threadfunc(void *parm)
 		printf("Thread %d blocked, notTimed\n", tid);
 		rc = pthread_cond_wait(&cond, &mutex);
 	  } else {
-		printf("Thread %d blocked\n", tid);
-		rc = pthread_cond_timedwait(&cond, &mutex, &ts);
+		printf("Thread %d blocked and waiting\n", tid);
+		rc = pthread_cond_timedwait(&cond, &mutex, starttimer(&ts, 6000 ));
 	  }
       /* If the wait timed out, in this example, the work is complete, and   */
       /* the thread will end.                                                */
@@ -263,25 +276,20 @@ int condTimed_main()
 
   printf("Enter Testcase - condTimed_main %s\n",testType);
 
-	if (strcmp(testType,"static") == 0) {
-		printf("cond + mutex static initialized\n");
-		strcpy(testType, "notTimed");
-	} else {
-	  rc = pthread_mutex_init (&mutex, NULL);
-	  checkResults("pthread_mutex_init()\n", rc);
+  rc = pthread_mutex_init (&mutex, NULL);
+  checkResults("pthread_mutex_init()\n", rc);
 	
-	  rc = pthread_cond_init (&cond, NULL);
-	  checkResults("pthread_cond_init()\n", rc);
-		printf("cond + mutex normal initialized\n");
-	}
-
+  rc = pthread_cond_init (&cond, NULL);
+  checkResults("pthread_cond_init()\n", rc);
 	
   rc = pthread_mutex_lock(&mutex);
   checkResults("pthread_mutex_lock()\n", rc);
 
-  printf("Try steal a signal 1, should timeout\n");
+  printf("Try steal a signal 1 (wait on own signal), should timeout\n");
+  rc = pthread_cond_broadcast(&cond);
+  checkResults("pthread_cond_signal()\n", rc);
 
-  rc = pthread_cond_timedwait(&cond, &mutex, &ts);
+  rc = pthread_cond_timedwait(&cond, &mutex, starttimer(&ts, 3000 ));
   printf("rc=%d\n",rc);
   checkResults("pthread_cond_timedwait() Steal 1\n", rc - ETIMEDOUT);
   printf("Done, rc=%d\n",rc);
@@ -301,7 +309,7 @@ int condTimed_main()
   rc = pthread_mutex_unlock(&mutex);
   checkResults("pthread_mutex_unlock()\n", rc);
 
-  Sleep(10000);
+  Sleep(3001);
   rc = pthread_mutex_lock(&mutex);
   checkResults("pthread_mutex_lock() 2\n", rc);
   printf("One another work item to give to a thread\n");
@@ -312,7 +320,7 @@ int condTimed_main()
   rc = pthread_mutex_unlock(&mutex);
   checkResults("pthread_mutex_unlock()\n", rc);
 
-  Sleep(10000);
+  //Sleep(10000);
   printf("Broadcast leave to all threads, waiters=%d\n",cond->waiters_count_);
   workLeave = 1;
   rc = pthread_cond_broadcast(&cond);
@@ -320,9 +328,179 @@ int condTimed_main()
   checkResults("pthread_cond_broadcast()\n", rc);
   printf("Try steal a signal 2, should timeout\n");
   rc = pthread_mutex_lock(&mutex);
-  rc = pthread_cond_timedwait(&cond, &mutex, &ts);
+  printf("pthread_mutex_lock, waiters=%d\n",cond->waiters_count_);
+  rc = pthread_cond_timedwait(&cond, &mutex, starttimer(&ts, 3000 ));
+  printf("pthread_cond_timedwait, waiters=%d\n",cond->waiters_count_);
   checkResults("pthread_cond_timedwait() Steal 2\n", rc - ETIMEDOUT);
   printf("Done, rc=%d\n",rc);
+  rc = pthread_mutex_unlock(&mutex);
+
+  printf("Wait for threads and cleanup\n");
+  for (i=0; i<COND_NTHREADS; ++i) {
+    rc = pthread_join(threadid[i], NULL);
+    checkResults("pthread_join()\n", rc);
+  }
+
+  printf("Exit, waiters=%d\n",cond->waiters_count_);
+  pthread_cond_destroy(&cond);
+  pthread_mutex_destroy(&mutex);
+  printf("Main completed\n");
+  return 0;
+}
+#else
+/*================================================================================*/
+
+#define COND_NTHREADS                3
+#define COND_WAIT_TIME_SECONDS       10
+
+struct timespec *starttimer(struct timespec *ts, DWORD ms)
+{
+	struct timeval    tp;
+    /* Convert from timeval to timespec */
+	gettimeofday(&tp, NULL);
+    ts->tv_sec  = tp.tv_sec;
+    ts->tv_nsec = tp.tv_usec * 1000;
+    ts->tv_sec += ms  / 1000;
+	return ts;
+}
+
+int                 workToDo = 0;
+int                 workLeave = 0;
+pthread_cond_t      cond=PTHREAD_COND_INITIALIZER;
+pthread_mutex_t     mutex=PTHREAD_MUTEX_INITIALIZER;
+
+void *condTimed_threadfunc(void *parm)
+{
+  int               tid;
+  int               rc;
+  struct timespec   ts;
+  struct timeval    tp;
+
+  rc = pthread_mutex_lock(&mutex);
+  checkResults("pthread_mutex_lock()\n", rc);
+  tid = pthread_self()->tid;
+
+  /* Usually worker threads will loop on these operations */
+  printf("condTimed_threadfunc, wait %d secs\n", COND_WAIT_TIME_SECONDS);
+  while (!workLeave) {
+    rc =  gettimeofday(&tp, NULL);
+    checkResults("gettimeofday()\n", rc);
+
+    /* Convert from timeval to timespec */
+    ts.tv_sec  = tp.tv_sec;
+    ts.tv_nsec = tp.tv_usec * 1000;
+    ts.tv_sec += COND_WAIT_TIME_SECONDS;
+
+    do {
+	  if (strcmp(testType,"notTimed") == 0) {
+		printf("Thread %d blocked, notTimed\n", tid);
+		rc = pthread_cond_wait(&cond, &mutex);
+	  } else {
+		printf("Thread %d blocked\n", tid);
+		rc = pthread_cond_timedwait(&cond, &mutex, starttimer(&ts, 3000 ));
+	  }
+      /* If the wait timed out, in this example, the work is complete, and   */
+      /* the thread will end.                                                */
+      /* In reality, a timeout must be accompanied by some sort of checking  */
+      /* to see if the work is REALLY all complete. In the simple example    */
+      /* we'll just go belly up when we time out.                            */
+      printf("Thread %d unblocked\n", tid);
+      if (rc == ETIMEDOUT) {
+        printf("Wait %d timed out!\n", tid);
+        rc = pthread_mutex_unlock(&mutex);
+        checkResults("pthread_mutex_unlock() A\n", rc);
+		printf("Exit %d\n", tid);
+        pthread_exit(NULL);
+      }
+      checkResults("pthread_cond_timedwait()\n", rc);
+    } while (!workLeave && !workToDo); 
+	if (workToDo) {
+		printf("Thread %d consumes work here\n", tid);
+		Sleep(2000);
+		workToDo = 0;
+	}
+  } 
+  printf("Thread %d leaves here\n", tid);
+  rc = pthread_mutex_unlock(&mutex);
+  checkResults("pthread_mutex_unlock() B\n", rc);
+  return NULL;
+}
+
+int condTimed_main()
+{
+  int                   rc=0;
+  int                   i;
+  pthread_t             threadid[COND_NTHREADS];
+  struct timespec   ts;
+
+	printf("Enter Testcase - condTimed_main %s\n",testType);
+
+	if (strcmp(testType,"static") == 0) {
+		printf("cond + mutex static initialized\n");
+		strcpy(testType, "notTimed");
+	} else {
+	  rc = pthread_mutex_init (&mutex, NULL);
+	  checkResults("pthread_mutex_init()\n", rc);
+	
+	  rc = pthread_cond_init (&cond, NULL);
+	  checkResults("pthread_cond_init()\n", rc);
+		printf("cond + mutex normal initialized\n");
+	}
+
+	
+  rc = pthread_mutex_lock(&mutex);
+  checkResults("pthread_mutex_lock()\n", rc);
+    printf("Mutex locked \n");
+
+  printf("Try steal a signal 1, should timeout\n");
+  
+  printf("Timed wait 1, waiters=%d\n",cond->waiters_count_);
+  rc = pthread_cond_timedwait(&cond, &mutex, starttimer(&ts, 3000 ));
+  printf("rc=%d\n",rc);
+  checkResults("pthread_cond_timedwait() Steal 1\n", rc - ETIMEDOUT);
+  printf("Done, rc=%d\n",rc);
+  rc = pthread_mutex_unlock(&mutex);
+
+  printf("Create %d threads\n", COND_NTHREADS);
+  for(i=0; i<COND_NTHREADS; ++i) {
+    rc = pthread_create(&threadid[i], NULL, condTimed_threadfunc, NULL);
+    checkResults("pthread_create()\n", rc);
+  }
+  Sleep(2000);
+  printf("One work item to give to a thread\n");
+  workToDo = 1;
+  rc = pthread_mutex_lock(&mutex);
+  printf("Mutex locked 2\n");
+  rc = pthread_cond_signal(&cond);
+  checkResults("pthread_cond_signal()\n", rc);
+  rc = pthread_mutex_unlock(&mutex);
+  checkResults("pthread_mutex_unlock()\n", rc);
+
+  //Sleep(1000);
+  rc = pthread_mutex_lock(&mutex);
+  checkResults("pthread_mutex_lock() 2\n", rc);
+  printf("One another work item to give to a thread\n");
+  workToDo = 1;
+  rc = pthread_cond_signal(&cond);
+  checkResults("pthread_cond_signal()\n", rc);
+
+  rc = pthread_mutex_unlock(&mutex);
+  checkResults("pthread_mutex_unlock()\n", rc);
+
+  //Sleep(1000);
+  printf("Broadcast leave to all threads, waiters=%d\n",cond->waiters_count_);
+  workLeave = 1;
+  rc = pthread_cond_broadcast(&cond);
+  //Sleep(1000);
+  printf("Broadcast done, waiters=%d\n",cond->waiters_count_);
+  checkResults("pthread_cond_broadcast()\n", rc);
+  printf("Try steal a signal 2, should timeout\n");
+  rc = pthread_mutex_lock(&mutex);
+  printf("Timed wait 2, waiters=%d\n",cond->waiters_count_);
+  rc = pthread_cond_timedwait(&cond, &mutex, starttimer(&ts, 2000 ));
+  checkResults("pthread_cond_timedwait() Steal 2\n", rc - ETIMEDOUT);
+  printf("Done, rc=%d\n",rc);
+  rc = pthread_mutex_unlock(&mutex);
 
   printf("Wait for threads and cleanup\n");
   for (i=0; i<COND_NTHREADS; ++i) {
@@ -348,7 +526,7 @@ int condStatic_main()
   strcpy(testType, "static");
   return condTimed_main();
 }
-
+#endif
 /*================================================================================*/
 void *rwlockTimed_rdlockThread(void *arg)
 {
@@ -693,9 +871,9 @@ int main(int argc, char * argv[]) {
 	if (strcmp(name, "thread") == 0) thread();
 	else if (strcmp(name, "rwlock") == 0) rwlock_main();
 	else if (strcmp(name, "rwlockTimed") == 0) rwlockTimed_main();
-	else if (strcmp(name, "cond") == 0) cond_main();
+	//else if (strcmp(name, "cond") == 0) cond_main();
 	else if (strcmp(name, "condTimed") == 0) condTimed_main();
-	else if (strcmp(name, "condStatic") == 0) condStatic_main();
+	//else if (strcmp(name, "condStatic") == 0) condStatic_main();
 	else if (strcmp(name, "barrier") == 0) barrier_main();
 	else if (strcmp(name, "mutex") == 0) mutex_main();
 	else if (strcmp(name, "spinlock") == 0) spinlock_main();

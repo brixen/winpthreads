@@ -4,6 +4,7 @@
 #include "rwlock.h"
 #include "misc.h"
 
+#ifdef USE_RWLOCK_pthread_cond
 int pthread_rwlock_destroy (pthread_rwlock_t *rwlock)
 {
     int result=0;
@@ -227,6 +228,8 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock, struct timespec *ts)
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
     return result;
 }
+#else /* USE_RWLOCK_SRWLock */
+#endif
 
 int pthread_rwlockattr_destroy(pthread_rwlockattr_t *a)
 {

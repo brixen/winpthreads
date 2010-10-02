@@ -45,7 +45,7 @@
 
 #include <sys/timeb.h>
 
-#define WINPTHREAD_DBG 1
+//#define WINPTHREAD_DBG 1
 
 /* Compatibility stuff: */
 /* deadlock detection is optional for spinlocks */
@@ -54,7 +54,7 @@
 #define USE_SPINLOCK_EPERM	1
 
 /* A few ways to implement pthread_mutex:  */
-//#define USE_MUTEX_Mutex 1
+//define USE_MUTEX_Mutex 1
 #define USE_MUTEX_CriticalSection 1
 
 /* A few ways to implement pthread_cond:  */
