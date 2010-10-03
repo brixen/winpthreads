@@ -19,6 +19,18 @@ typedef struct {
 	int id;
 } parm;
 
+struct timespec *starttimer(struct timespec *ts, DWORD ms)
+{
+	struct timeval    tp;
+    /* Convert from timeval to timespec */
+	gettimeofday(&tp, NULL);
+    ts->tv_sec  = tp.tv_sec;
+    ts->tv_nsec = tp.tv_usec * 1000;
+    ts->tv_sec += ms  / 1000;
+	return ts;
+}
+
+
 void *hello(void *arg)
 {
 	parm *p=(parm *)arg;
@@ -194,18 +206,6 @@ int mutex_main(void)
 #define COND_NTHREADS                3
 #define COND_WAIT_TIME_SECONDS       10
 
-
-struct timespec *starttimer(struct timespec *ts, DWORD ms)
-{
-	struct timeval    tp;
-    /* Convert from timeval to timespec */
-	gettimeofday(&tp, NULL);
-    ts->tv_sec  = tp.tv_sec;
-    ts->tv_nsec = tp.tv_usec * 1000;
-    ts->tv_sec += ms  / 1000;
-	return ts;
-}
-
 int                 workToDo = 0;
 int                 workLeave = 0;
 pthread_cond_t      cond;
@@ -352,17 +352,6 @@ int condTimed_main()
 
 #define COND_NTHREADS                3
 #define COND_WAIT_TIME_SECONDS       10
-
-struct timespec *starttimer(struct timespec *ts, DWORD ms)
-{
-	struct timeval    tp;
-    /* Convert from timeval to timespec */
-	gettimeofday(&tp, NULL);
-    ts->tv_sec  = tp.tv_sec;
-    ts->tv_nsec = tp.tv_usec * 1000;
-    ts->tv_sec += ms  / 1000;
-	return ts;
-}
 
 int                 workToDo = 0;
 int                 workLeave = 0;
@@ -534,13 +523,9 @@ void *rwlockTimed_rdlockThread(void *arg)
   int             count=0;
   struct timespec ts;
 
-  /* 1.5 seconds */
-  ts.tv_sec = 1;
-  ts.tv_nsec = 500000000;
-
   printf("Entered thread, getting read lock with timeout\n");
   Retry:
-  rc = pthread_rwlock_timedrdlock(&rwlock, &ts);
+  rc = pthread_rwlock_timedrdlock(&rwlock, starttimer(&ts, 3000 ));
   if (rc == EBUSY) {
     if (count >= 10) {
       printf("Retried too many times, failure!\n");

@@ -9,6 +9,14 @@
 		|| ( ((rwlock_t *)(*l))->valid != (unsigned int)LIFE_RWLOCK ) ) \
         return EINVAL; }
 
+#ifndef SRWLOCK_INIT
+#define RTL_SRWLOCK_INIT {0}   
+typedef struct _RTL_SRWLOCK {                            
+        PVOID Ptr;                                       
+} RTL_SRWLOCK, *PRTL_SRWLOCK;                            
+typedef RTL_SRWLOCK SRWLOCK, *PSRWLOCK;
+#endif
+
 typedef struct rwlock_t rwlock_t;
 struct rwlock_t {
     unsigned int valid;
