@@ -54,7 +54,8 @@
 #define USE_SPINLOCK_EPERM	1
 
 /* A few ways to implement pthread_mutex:  */
-//define USE_MUTEX_Mutex 1
+//#define USE_MUTEX_Mutex 1
+/* Faster than Mutex but NOT cross-process.  */
 #define USE_MUTEX_CriticalSection 1
 
 /* A few ways to implement pthread_cond:  */
@@ -80,10 +81,13 @@
 #ifdef USE_COND_SignalObjectAndWait
 #undef USE_MUTEX_CriticalSection
 #undef USE_MUTEX_Mutex
-#undef USE_RWLOCK_SRWLock
-#undef USE_RWLOCK_pthread_cond
 #define USE_MUTEX_Mutex
-#define USE_RWLOCK_pthread_cond
+#endif
+
+#ifdef USE_COND_ConditionVariable
+#undef USE_MUTEX_CriticalSection
+#undef USE_MUTEX_Mutex
+#define USE_MUTEX_CriticalSection
 #endif
 
 /* Error-codes.  */

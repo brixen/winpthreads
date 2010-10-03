@@ -200,8 +200,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 	int r;
 	unsigned long long t, ct;
 	
-	if (!m)	return EINVAL; 
 	if (!ts) return EINVAL; 
+	INIT_MUTEX(m);
 	mutex_t *_m = (mutex_t *)*m;
 	
 	/* Try to lock it without waiting */

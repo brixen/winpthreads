@@ -1,3 +1,4 @@
+#include <windows.h>
 #include "pthread.h"
 #include "misc.h"
 #include "barrier.h" 
