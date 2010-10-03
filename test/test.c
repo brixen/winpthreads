@@ -723,9 +723,11 @@ void *barrier_Thread(void *arg)
         for (j = nr; j < BARRIER_NTHREADS; ++j)
         {
             /* Increment the counter for this round.  */
+			//printf ("Increment the counter for this round %d\n", j);
             pthread_mutex_lock (&lock);
             ++counters[j];
             pthread_mutex_unlock (&lock);
+			//printf ("Incremented the counter for this round %d\n", j);
 
             /* Wait for the rest.  */
             retval = pthread_barrier_wait (&barriers[j]);
@@ -748,20 +750,26 @@ void *barrier_Thread(void *arg)
                 }
                 else
                 {
-                    pthread_mutex_lock (&lock);
+ 					//printf ("pthread_mutex_lock %d\n", nr);
+					pthread_mutex_lock (&lock);
                     ++serial[j];
                     pthread_mutex_unlock (&lock);
                 }
             }
 
             /* Wait for the rest again.  */
+			printf ("Wait for the rest again %d\n",j);
             retval = pthread_barrier_wait (&barriers[j]);
-
+			/* the following printf can make bugs go away - timing dependend */
+			/* try USE_MUTEX_CriticalSection + USE_COND_Semaphore */
+			/* printf ("Wait for the rest again continue %d\n",j); */
+	
             /* Now we can check whether exactly one thread was serializing.  */
             if (nr == 0 && serial[j] != 1)
             {
                 printf ("not exactly one serial thread in round %d\n", j);
                 result = (void *) 1;
+				exit(1);
             }
         }
     }
@@ -790,6 +798,7 @@ int barrier_main(void)
 			printf ("Failed to initialize barrier %d\n", i);
 			exit (1);
 		}
+		printf ("initialized barrier %d\n", i);
 	}
 
 	/* Start the threads.  */
@@ -799,9 +808,11 @@ int barrier_main(void)
 			printf ("Failed to start thread %d\n", i);
 			exit (1);
 		}
+		printf ("started thread %d\n", i);
 	}
 
 	/* And wait for them.  */
+	printf ("Wait for %d threads\n", i);
 	for (i = 0; i < BARRIER_NTHREADS; ++i) {
 		if (pthread_join (threads[i], &res) != 0 || res != NULL)
 		{
@@ -810,6 +821,7 @@ int barrier_main(void)
 		}
 	}
 
+	printf ("Result: %d\n", result);
 	if (result == 0)
 		puts ("all OK");
 

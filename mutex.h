@@ -5,15 +5,16 @@
 #define CHECK_DEADLK(m)	if ((m->type != PTHREAD_MUTEX_RECURSIVE) && \
 							(((_tid_u)m->cs.OwningThread).tid == GetCurrentThreadId()) ) \
 							return EDEADLK
+#define SET_OWNER(m)
+#define UNSET_OWNER(m)
 #else
 #define CHECK_DEADLK(m)	if ((m->type != PTHREAD_MUTEX_RECURSIVE) && \
 							(m->owner == GetCurrentThreadId()) ) \
 							return EDEADLK
-#endif
 #define SET_OWNER(m)	if (m->type != PTHREAD_MUTEX_RECURSIVE) \
 							m->owner = GetCurrentThreadId()
-
 #define UNSET_OWNER(m)	m->owner = 0
+#endif
 
 #define CHECK_MUTEX(m)  { \
     if (!(m) || !*m || (*m == PTHREAD_MUTEX_INITIALIZER) \

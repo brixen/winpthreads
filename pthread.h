@@ -70,7 +70,7 @@
 /* default, use pthread_cond above.  */
 #define USE_RWLOCK_pthread_cond 1
 /* USE_RWLOCK_SRWLock is Windows Vista+, NOT cross-process.  */
-/* #define USE_RWLOCK_SRWLock 1 */
+//#define USE_RWLOCK_SRWLock 1
 
 /* Dependencies:  */
 #ifdef USE_SPINLOCK_EPERM /* need the owner */
@@ -81,13 +81,13 @@
 #ifdef USE_COND_SignalObjectAndWait
 #undef USE_MUTEX_CriticalSection
 #undef USE_MUTEX_Mutex
-#define USE_MUTEX_Mutex
+#define USE_MUTEX_Mutex	1
 #endif
 
 #ifdef USE_COND_ConditionVariable
 #undef USE_MUTEX_CriticalSection
 #undef USE_MUTEX_Mutex
-#define USE_MUTEX_CriticalSection
+#define USE_MUTEX_CriticalSection	1
 #endif
 
 /* Error-codes.  */
@@ -182,21 +182,11 @@ struct itimerspec {
 typedef struct spin_t	*pthread_spinlock_t;
 typedef struct mutex_t	*pthread_mutex_t;
 typedef struct cond_t	*pthread_cond_t;
+typedef struct rwlock_t	*pthread_rwlock_t;
 
 #define GENERIC_INITIALIZER (void *)(uintptr_t)(-1)
 #define PTHREAD_MUTEX_INITIALIZER	(mutex_t *)GENERIC_INITIALIZER
 #define PTHREAD_COND_INITIALIZER	(cond_t *)GENERIC_INITIALIZER
-
-typedef struct pthread_rwlock_t pthread_rwlock_t;
-struct pthread_rwlock_t {
-    int readers;
-    int writers;
-    int readers_count;	/* Number of waiting readers,  */
-    int writers_count;	/* Number of waiting writers.  */
-    pthread_mutex_t m;
-    pthread_cond_t cr;
-    pthread_cond_t cw;
-};
 
 typedef struct pthread_barrier_t pthread_barrier_t;
 struct pthread_barrier_t
