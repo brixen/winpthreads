@@ -179,23 +179,15 @@ struct itimerspec {
 };
 #endif
 
-typedef struct spin_t	*pthread_spinlock_t;
-typedef struct mutex_t	*pthread_mutex_t;
-typedef struct cond_t	*pthread_cond_t;
-typedef struct rwlock_t	*pthread_rwlock_t;
+typedef struct spin_t		*pthread_spinlock_t;
+typedef struct mutex_t		*pthread_mutex_t;
+typedef struct cond_t		*pthread_cond_t;
+typedef struct rwlock_t		*pthread_rwlock_t;
+typedef struct barrier_t	*pthread_barrier_t;
 
 #define GENERIC_INITIALIZER (void *)(uintptr_t)(-1)
 #define PTHREAD_MUTEX_INITIALIZER	(mutex_t *)GENERIC_INITIALIZER
 #define PTHREAD_COND_INITIALIZER	(cond_t *)GENERIC_INITIALIZER
-
-typedef struct pthread_barrier_t pthread_barrier_t;
-struct pthread_barrier_t
-{
-    int count;
-    int total;
-    pthread_mutex_t m;
-    pthread_cond_t c;
-};
 
 typedef struct pthread_attr_t pthread_attr_t;
 struct pthread_attr_t
@@ -252,7 +244,7 @@ int pthread_mutex_destroy(pthread_mutex_t *m);
 
 #define _PTHREAD_BARRIER_FLAG (1<<30)
 int pthread_barrier_destroy(pthread_barrier_t *b);
-int pthread_barrier_init(pthread_barrier_t *b, void *attr, int count);
+int pthread_barrier_init(pthread_barrier_t *b, void *attr, unsigned int count);
 int pthread_barrier_wait(pthread_barrier_t *b);
 
 int pthread_spin_init(pthread_spinlock_t *l, int pshared);

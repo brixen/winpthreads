@@ -746,6 +746,7 @@ void *barrier_Thread(void *arg)
 			printf ("Wait for the rest again %d\n",j);
             retval = pthread_barrier_wait (&barriers[j]);
 			/* the following printf can make bugs go away - timing dependend */
+			/* without this printf the test hangs here */
 			/* try USE_MUTEX_CriticalSection + USE_COND_Semaphore */
 			/* printf ("Wait for the rest again continue %d\n",j); */
 	
