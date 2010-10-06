@@ -42,11 +42,12 @@ struct mutex_t
 	DWORD owner;
 #if defined USE_MUTEX_Mutex
     HANDLE h;
-	HANDLE sem;
 #else /* USE_MUTEX_CriticalSection.  */
     CRITICAL_SECTION cs;
-	/* use the sem of cs */
 #endif
+	/* Prevent multiple (external) unlocks from messing up the semaphore signal state */
+	HANDLE semExt;
+	LONG lockExt;
 };
 
 #if defined USE_MUTEX_CriticalSection

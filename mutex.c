@@ -154,8 +154,9 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 					r = ENOMEM;
 			}
 		} else {
-			_m->owner = 0;
-			_m->valid = LIFE_MUTEX;
+			_m->owner		= 0;
+			_m->lockCount	= 0;
+			_m->valid		= LIFE_MUTEX;
 			*m = _m;
 		}
 	} 
@@ -192,23 +193,22 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 #else /* USE_MUTEX_CriticalSection */
 static int mutex_normal_handle_deadlk(mutex_t *_m)
 {
-	_pthread_crit_u cu;
-	cu.cs = &_m->cs;
 	/* Now hang in the semaphore until released by another thread */
 	/* The latter is undefined behaviour and thus NOT portable */
-	while(WaitForSingleObject(cu.pc->sem, INFINITE));
+	InterlockedExchange(&_m->lockExt, 1);
+	while(WaitForSingleObject(_m->semExt, INFINITE));
 	if (!COND_OWNER(_m)) return EINVAL; /* or should this be an assert ? */
 	return 0;
 }
 
 static int mutex_normal_handle_undefined(mutex_t *_m)
 {
-	_pthread_crit_u cu;
-	LONG previousCount;
-	cu.cs = &_m->cs;
 	/* Release the semaphore locked by another thread */
 	/* This is undefined behaviour and thus NOT portable */
-	ReleaseSemaphore(cu.pc->sem, 1, &previousCount);
+	if (InterlockedExchange(&_m->lockExt, 0) == 1) {
+		/* only 1 unlock should actually release the semaphore */
+		ReleaseSemaphore(_m->semExt, 1, NULL);
+	}
 	return 0;
 }
 
@@ -327,20 +327,36 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 	if ( !(_m = (pthread_mutex_t)malloc(sizeof(*_m))) ) {
 		return ENOMEM; 
 	}
+	_m->valid		= DEAD_MUTEX;
+	_m->owner		= 0;
+	_m->semExt		= NULL;
+	_m->lockExt		= 0;
 
 	_m->type = PTHREAD_MUTEX_DEFAULT; 
 	if (a) {
 		r = pthread_mutexattr_gettype(a, &_m->type);
 	}
 	if (!r) {
-		InitializeCriticalSection(&_m->cs);
-
-		_m->owner = 0;
-		_m->valid = LIFE_MUTEX;
-		*m = _m;
-	} else {
-		_m->valid = DEAD_MUTEX;
+		if (InitializeCriticalSectionAndSpinCount(&_m->cs, USE_MUTEX_CriticalSection_SpinCount)) {
+			if (_m->type == PTHREAD_MUTEX_NORMAL) {
+				/* Prevent multiple (external) unlocks from messing up the semaphore signal state
+				 * by setting lMaximumCount to 1
+				 */
+				_m->semExt = CreateSemaphore (NULL, 0, 1, NULL);
+				if (!_m->semExt) {
+					DeleteCriticalSection(&_m->cs);
+					r = ENOMEM;
+				}
+			}
+		} else {
+			r = ENOMEM;
+		}
+	}
+	if (r) {
 		free(_m);
+	} else {
+		_m->valid		= LIFE_MUTEX;
+		*m = _m;
 	}
 	
 	return r;
@@ -349,6 +365,7 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 int pthread_mutex_destroy(pthread_mutex_t *m)
 {
 	mutex_t *_m = (mutex_t *)*m;
+	int r = 0;
 
 	if (!m || !*m)	return EINVAL; 
 	if (*m == PTHREAD_MUTEX_INITIALIZER) {
@@ -358,18 +375,21 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 	if (_m->valid != LIFE_MUTEX) {
 		return EINVAL;
 	}
-	if (_m->owner) {
-		/* Works only in non-recursive case currently */
-		return EBUSY;
+	if ((r = pthread_mutex_trylock(m))) {
+		return r; /* EBUSY, likely */
 	}
 	pthread_mutex_t *m2 = m;
 	*m = NULL; /* dereference first, free later */
 	_ReadWriteBarrier();
+	pthread_mutex_unlock(m2);
     _m->type  = 0;
     _m->valid  = DEAD_MUTEX;
+	if (_m->semExt) {
+		CloseHandle(_m->semExt);
+	}
 	DeleteCriticalSection(&_m->cs);
 	free(*m2);
-	return 0;
+	return r;
 }
 #endif /* USE_MUTEX_Mutex */
 

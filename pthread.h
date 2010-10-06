@@ -50,9 +50,11 @@
 
 /* Compatibility stuff: */
 /* deadlock detection is optional for spinlocks */
-#define USE_SPINLOCK_DEADLK 1
+#define USE_SPINLOCK_DEADLK					1
 /* checking if de calling thread holds the lock at unlock is optional */
-#define USE_SPINLOCK_EPERM	1
+#define USE_SPINLOCK_EPERM					1
+/* Set this to 0 to disable it */
+#define USE_MUTEX_CriticalSection_SpinCount	0
 
 /* A few ways to implement pthread_mutex:  */
 //#define USE_MUTEX_Mutex 1

@@ -153,6 +153,60 @@ void *mutex_threadfunc(void *parm)
    return NULL;
 }
  
+/* PTHREAD_NORMAL_MUTEX_INITIALIZER deadlock handling thread 1 */
+void *mutex_threadfuncDL1(void *parm) 
+{
+   int   rc;
+   int d;
+   int tid = pthread_self()->tid;
+   printf("Thread %d: Entered, locking n1\n", tid);
+   rc = pthread_mutex_lock(&mutex);
+   checkResults("pthread_mutex_lock() 1\n", rc);
+   printf("Thread %d: locked nr1\n", tid);
+   Sleep(1000);
+   printf("Thread %d: locking nr2 for a deadlock\n", tid);
+   rc = pthread_mutex_lock(&mutex);
+   checkResults("pthread_mutex_lock() 2\n", rc);
+   printf("Thread %d: locked nr2 and externally unlocked\n", tid);
+   /********** Critical Section *******************/
+   Sleep(2000);
+   printf("Thread %d: Doing job\n", tid);
+   Sleep(2000);
+   printf("Thread %d: End critical section, release lock\n", tid);
+   /********** Critical Section *******************/
+   rc = pthread_mutex_unlock(&mutex);
+   checkResults("pthread_mutex_unlock()\n", rc);
+   printf("Thread %d: leaving\n", tid);
+   return NULL;
+}
+ 
+/* PTHREAD_NORMAL_MUTEX_INITIALIZER deadlock handling main thread */
+int mutex_main_DL(void)
+{
+   int   rc;
+   int d;
+   pthread_t thread;
+   int tid = pthread_self()->tid;
+	rc = pthread_create(&thread, NULL, mutex_threadfuncDL1, NULL);
+	checkResults("mutex_main_DL: pthread_create()\n", rc);
+   printf("mutex_main_DL: wait for thread\n");
+   Sleep(3000);
+   printf("mutex_main_DL: try ext release deadlock\n");
+
+   rc = pthread_mutex_unlock(&mutex);
+   checkResults("pthread_mutex_unlock() ext\n", rc);
+   printf("mutex_main_DL: unlocked 1\n");
+   Sleep(2000);
+   //rc = pthread_mutex_unlock(&mutex);
+   checkResults("pthread_mutex_unlock() ext 2\n", rc);
+   printf("mutex_main_DL: unlocked 2\n");
+   Sleep(10000);
+   printf("mutex_main_DL: bye!\n");
+
+   return 0;
+}
+ 
+
 int mutex_main(void)
 {
 	pthread_t             thread[MUTEX_NTHREADS];
@@ -164,6 +218,9 @@ int mutex_main(void)
 		mutex = PTHREAD_DEFAULT_MUTEX_INITIALIZER;
 	} else if (strcmp(testType,"staticN") == 0) {
 		mutex = PTHREAD_NORMAL_MUTEX_INITIALIZER;
+	} else if (strcmp(testType,"staticND") == 0) {
+		mutex = PTHREAD_NORMAL_MUTEX_INITIALIZER;
+		return mutex_main_DL();
 	} else if (strcmp(testType,"staticE") == 0) {
 		mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER;
 	} else if (strcmp(testType,"staticR") == 0) {
@@ -864,7 +921,7 @@ int main(int argc, char * argv[]) {
 	if (argc < 2)
 	{
 		printf ("Usage: %s <name> [type]\nwhere <name> is test name\n",argv[0]);
-		printf ("test names are: thread, rwlock, rwlockTimed, cond, condTimed, condStatic, spinlock, barrier, mutex [static[N|R|E]].\n");
+		printf ("test names are: thread, rwlock, rwlockTimed, cond, condTimed, condStatic, spinlock, barrier, mutex [static[N|R|E|ND]].\n");
 		exit(1);
 	}
 	strcpy(testType, "default");
