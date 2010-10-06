@@ -4,6 +4,7 @@
 #include "../thread.h"
 #include "../mutex.h"
 #include "../cond.h"
+#include "../misc.h"
 
 #define MAX_THREAD 1000
 #define N_THREAD 40
@@ -160,16 +161,23 @@ int mutex_main(void)
 
 	printf("Enter Testcase - mutex_main %s\n",testType);
 	if (strcmp(testType,"static") == 0) {
-		mutex = PTHREAD_MUTEX_INITIALIZER;
-		printf("Mutex inited static\n");
+		mutex = PTHREAD_DEFAULT_MUTEX_INITIALIZER;
+	} else if (strcmp(testType,"staticN") == 0) {
+		mutex = PTHREAD_NORMAL_MUTEX_INITIALIZER;
+	} else if (strcmp(testType,"staticE") == 0) {
+		mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER;
+	} else if (strcmp(testType,"staticR") == 0) {
+		mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
 	} else {
 		rc = pthread_mutex_init(&mutex,NULL);
 		printf("Mutex inited\n");
 		checkResults("pthread_mutex_init()\n", rc);
 	}
+	printf("Mutex inited\n");
 
 	printf("Hold Mutex to prevent access to shared data\n");
 	rc = pthread_mutex_lock(&mutex);
+	printf("Mutex inited type=%d\n", ((mutex_t *)mutex)->type);
 	printf("Unlock Mutex to prevent access to shared data\n");
 	checkResults("pthread_mutex_lock()\n", rc);
 	rc = pthread_mutex_unlock(&mutex);
@@ -321,16 +329,16 @@ int condTimed_main()
   checkResults("pthread_mutex_unlock()\n", rc);
 
   //Sleep(10000);
-  printf("Broadcast leave to all threads, waiters=%d\n",cond->waiters_count_);
+  printf("Broadcast leave to all threads, waiters=%d\n",((cond_t *)cond)->waiters_count_);
   workLeave = 1;
   rc = pthread_cond_broadcast(&cond);
-   printf("Broadcast done, waiters=%d\n",cond->waiters_count_);
+   printf("Broadcast done, waiters=%d\n",((cond_t *)cond)->waiters_count_);
   checkResults("pthread_cond_broadcast()\n", rc);
   printf("Try steal a signal 2, should timeout\n");
   rc = pthread_mutex_lock(&mutex);
-  printf("pthread_mutex_lock, waiters=%d\n",cond->waiters_count_);
+  printf("pthread_mutex_lock, waiters=%d\n",((cond_t *)cond)->waiters_count_);
   rc = pthread_cond_timedwait(&cond, &mutex, starttimer(&ts, 3000 ));
-  printf("pthread_cond_timedwait, waiters=%d\n",cond->waiters_count_);
+  printf("pthread_cond_timedwait, waiters=%d\n",((cond_t *)cond)->waiters_count_);
   checkResults("pthread_cond_timedwait() Steal 2\n", rc - ETIMEDOUT);
   printf("Done, rc=%d\n",rc);
   rc = pthread_mutex_unlock(&mutex);
@@ -341,7 +349,7 @@ int condTimed_main()
     checkResults("pthread_join()\n", rc);
   }
 
-  printf("Exit, waiters=%d\n",cond->waiters_count_);
+  printf("Exit, waiters=%d\n",((cond_t *)cond)->waiters_count_);
   pthread_cond_destroy(&cond);
   pthread_mutex_destroy(&mutex);
   printf("Main completed\n");
@@ -856,7 +864,7 @@ int main(int argc, char * argv[]) {
 	if (argc < 2)
 	{
 		printf ("Usage: %s <name> [type]\nwhere <name> is test name\n",argv[0]);
-		printf ("test names are: thread, rwlock, rwlockTimed, cond, condTimed, condStatic, spinlock, barrier, mutex.\n");
+		printf ("test names are: thread, rwlock, rwlockTimed, cond, condTimed, condStatic, spinlock, barrier, mutex [static[N|R|E]].\n");
 		exit(1);
 	}
 	strcpy(testType, "default");

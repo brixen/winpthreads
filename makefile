@@ -24,6 +24,9 @@ libpthread.a: thread.o mutex.o cond.o rwlock.o barrier.o spinlock.o misc.o
 
 lib: libpthread.a	
 
+tests: lib
+	cp libpthread.a pthread.h tests
+	
 clean:
 	rm -rf *.o *.a
 

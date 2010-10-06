@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <signal.h>
 #include "pthread.h"
 #include "thread.h"
 #include "misc.h"
@@ -54,6 +55,11 @@ static int _pthread_once_raw(pthread_once_t *o, void (*func)(void))
 
     /* Done */
     return 0;
+}
+
+void * pthread_timechange_handler_np(void * dummy)
+{
+	return 0;
 }
 
 pthread_t pthread_self(void);
@@ -414,6 +420,14 @@ int pthread_cancel(pthread_t t)
     }
 
     return 0;
+}
+
+/* half-stubbed version as we don't really well support signals */
+int pthread_kill(pthread_t t, int sig)
+{
+    CHECK_OBJECT(t, ESRCH);
+	if (sig < SIGINT || sig > NSIG) return EINVAL;
+	return pthread_cancel(t);
 }
 
 unsigned _pthread_get_state(pthread_attr_t *attr, unsigned flag)

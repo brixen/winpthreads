@@ -42,6 +42,7 @@
 
 #include <process.h>
 #include <limits.h>
+#include <signal.h>
 
 #include <sys/timeb.h>
 
@@ -60,17 +61,17 @@
 
 /* A few ways to implement pthread_cond:  */
 /* default.  */
-#define USE_COND_Semaphore 1
+//#define USE_COND_Semaphore 1
 /* USE_COND_SignalObjectAndWait has a flaw at timeout, hopefully fixed.  */
 //#define USE_COND_SignalObjectAndWait 1
 /* USE_COND_ConditionVariable is Windows Vista+, NOT cross-process.  */
-//#define USE_COND_ConditionVariable 1
+#define USE_COND_ConditionVariable 1
 
 /* A few ways to implement pthread_rwlock:  */
 /* default, use pthread_cond above.  */
-#define USE_RWLOCK_pthread_cond 1
+//#define USE_RWLOCK_pthread_cond 1
 /* USE_RWLOCK_SRWLock is Windows Vista+, NOT cross-process.  */
-//#define USE_RWLOCK_SRWLock 1
+#define USE_RWLOCK_SRWLock 1
 
 /* Dependencies:  */
 #ifdef USE_SPINLOCK_EPERM /* need the owner */
@@ -116,6 +117,8 @@
 
 #define PTHREAD_CANCELED ((void *) 0xDEADBEEF)
 
+#define _PTHREAD_NULL_THREAD NULL
+
 #define PTHREAD_ONCE_INIT 0
 
 #define PTHREAD_DESTRUCTOR_ITERATIONS 256
@@ -124,7 +127,7 @@
 #define PTHREAD_MUTEX_NORMAL 0
 #define PTHREAD_MUTEX_ERRORCHECK 1
 #define PTHREAD_MUTEX_RECURSIVE 2
-#define PTHREAD_MUTEX_DEFAULT 3
+#define PTHREAD_MUTEX_DEFAULT PTHREAD_MUTEX_NORMAL
 #define PTHREAD_MUTEX_SHARED 4
 #define PTHREAD_MUTEX_PRIVATE 0
 #define PTHREAD_PRIO_NONE 0
@@ -133,6 +136,15 @@
 #define PTHREAD_PRIO_MULT 32
 #define PTHREAD_PROCESS_SHARED 0
 #define PTHREAD_PROCESS_PRIVATE 1
+
+/* Extensions to make more w32 tests happy (LinuxThreads): */
+#define PTHREAD_MUTEX_FAST_NP		PTHREAD_MUTEX_NORMAL
+#define PTHREAD_MUTEX_TIMED_NP		PTHREAD_MUTEX_FAST_NP
+#define PTHREAD_MUTEX_ADAPTIVE_NP	PTHREAD_MUTEX_FAST_NP
+#define PTHREAD_MUTEX_ERRORCHECK_NP	PTHREAD_MUTEX_ERRORCHECK
+#define PTHREAD_MUTEX_RECURSIVE_NP	PTHREAD_MUTEX_RECURSIVE
+
+void * pthread_timechange_handler_np(void * dummy);
 
 #define PTHREAD_BARRIER_SERIAL_THREAD 1
 
@@ -179,15 +191,26 @@ struct itimerspec {
 };
 #endif
 
-typedef struct spin_t		*pthread_spinlock_t;
-typedef struct mutex_t		*pthread_mutex_t;
-typedef struct cond_t		*pthread_cond_t;
-typedef struct rwlock_t		*pthread_rwlock_t;
-typedef struct barrier_t	*pthread_barrier_t;
+typedef void	*pthread_spinlock_t;
+typedef void	*pthread_mutex_t;
+typedef void	*pthread_cond_t;
+typedef void	*pthread_rwlock_t;
+typedef void	*pthread_barrier_t;
 
-#define GENERIC_INITIALIZER (void *)(uintptr_t)(-1)
-#define PTHREAD_MUTEX_INITIALIZER	(mutex_t *)GENERIC_INITIALIZER
-#define PTHREAD_COND_INITIALIZER	(cond_t *)GENERIC_INITIALIZER
+#define PTHREAD_MUTEX_NORMAL 0
+#define PTHREAD_MUTEX_ERRORCHECK 1
+#define PTHREAD_MUTEX_RECURSIVE 2
+
+#define GENERIC_INITIALIZER						UINT2PTR(-1)
+#define GENERIC_ERRORCHECK_INITIALIZER			UINT2PTR(-2)
+#define GENERIC_RECURSIVE_INITIALIZER			UINT2PTR(-3)
+#define GENERIC_NORMAL_INITIALIZER				UINT2PTR(-1)
+#define PTHREAD_MUTEX_INITIALIZER				(pthread_mutex_t *)GENERIC_INITIALIZER
+#define PTHREAD_RECURSIVE_MUTEX_INITIALIZER		(pthread_mutex_t *)GENERIC_RECURSIVE_INITIALIZER
+#define PTHREAD_ERRORCHECK_MUTEX_INITIALIZER	(pthread_mutex_t *)GENERIC_ERRORCHECK_INITIALIZER
+#define PTHREAD_NORMAL_MUTEX_INITIALIZER		(pthread_mutex_t *)GENERIC_NORMAL_INITIALIZER
+#define PTHREAD_DEFAULT_MUTEX_INITIALIZER		PTHREAD_NORMAL_MUTEX_INITIALIZER
+#define PTHREAD_COND_INITIALIZER				(pthread_cond_t *)GENERIC_INITIALIZER
 
 typedef struct pthread_attr_t pthread_attr_t;
 struct pthread_attr_t
@@ -211,6 +234,7 @@ int pthread_exit(void *res);
 void _pthread_invoke_cancel(void);
 void pthread_testcancel(void);
 int pthread_cancel(pthread_t t);
+int pthread_kill(pthread_t t, int sig);
 unsigned _pthread_get_state(pthread_attr_t *attr, unsigned flag);
 int _pthread_set_state(pthread_attr_t *attr, unsigned flag, unsigned val);
 int pthread_setcancelstate(int state, int *oldstate);
@@ -242,7 +266,6 @@ int pthread_mutex_trylock(pthread_mutex_t *m);
 int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a);
 int pthread_mutex_destroy(pthread_mutex_t *m);
 
-#define _PTHREAD_BARRIER_FLAG (1<<30)
 int pthread_barrier_destroy(pthread_barrier_t *b);
 int pthread_barrier_init(pthread_barrier_t *b, void *attr, unsigned int count);
 int pthread_barrier_wait(pthread_barrier_t *b);
@@ -289,7 +312,6 @@ int pthread_barrierattr_setpshared(void **attr, int s);
 int pthread_barrierattr_getpshared(void **attr, int *s);
 
 /* Windows has rudimentary signals support.  */
-#define pthread_kill(T, S) 0
 #define pthread_sigmask(H, S1, S2) 0
  
 /* Wrap cancellation points.  */

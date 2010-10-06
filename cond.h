@@ -8,8 +8,8 @@
 
 #define INIT_COND(c)  { int r; \
     if (!c || !*c)	return EINVAL; \
-	if (*c == PTHREAD_COND_INITIALIZER) if ((r = cond_static_init(c))) return r; \
-	if ( ( ((cond_t *)(*c))->valid != (unsigned int)LIFE_COND ) ) return EINVAL; }
+	if (*c == PTHREAD_COND_INITIALIZER) { if ((r = cond_static_init(c))) return r; } \
+	else if ( ( ((cond_t *)(*c))->valid != (unsigned int)LIFE_COND ) ) return EINVAL; }
 
 #define LIFE_COND 0xC0BAB1FD
 #define DEAD_COND 0xC0DEADBF

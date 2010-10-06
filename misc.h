@@ -1,6 +1,8 @@
 #ifndef WIN_PTHREADS_MISC_H
 #define WIN_PTHREADS_MISC_H
 
+#define UINT2PTR(x)								((void *)(uintptr_t)(x))
+#define PTR2INT(x)								((int)(uintptr_t)(x))
 
 #define CHECK_HANDLE(h) { DWORD dwFlags; \
     if (!(h) || ((h) == INVALID_HANDLE_VALUE) || !GetHandleInformation((h), &dwFlags)) \

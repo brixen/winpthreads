@@ -2,8 +2,10 @@
 #define WIN_PTHREADS_MUTEX_H
 
 #ifdef USE_MUTEX_CriticalSection
-#define CHECK_DEADLK(m)	if ((m->type != PTHREAD_MUTEX_RECURSIVE) && \
-							(((_tid_u)m->cs.OwningThread).tid == GetCurrentThreadId()) ) \
+#define COND_LOCKED(m)	(((_tid_u)m->cs.OwningThread).tid != 0)
+#define COND_OWNER(m)	(((_tid_u)m->cs.OwningThread).tid == GetCurrentThreadId())
+#define COND_DEADLK(m)	COND_OWNER(m)
+#define CHECK_DEADLK(m)	if ((m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(m))\
 							return EDEADLK
 #define SET_OWNER(m)
 #define UNSET_OWNER(m)
@@ -16,6 +18,9 @@
 #define UNSET_OWNER(m)	m->owner = 0
 #endif
 
+#define STATIC_INITIALIZER(x)		((pthread_mutex_t)(x) >= ((pthread_mutex_t)PTHREAD_RECURSIVE_MUTEX_INITIALIZER))
+#define MUTEX_INITIALIZER2TYPE(x)	((long long)PTHREAD_NORMAL_MUTEX_INITIALIZER - (long long)(x))
+
 #define CHECK_MUTEX(m)  { \
     if (!(m) || !*m || (*m == PTHREAD_MUTEX_INITIALIZER) \
 		|| ( ((mutex_t *)(*m))->valid != (unsigned int)LIFE_MUTEX ) ) \
@@ -23,8 +28,8 @@
 
 #define INIT_MUTEX(m)  { int r; \
     if (!m || !*m)	return EINVAL; \
-	if (*m == PTHREAD_MUTEX_INITIALIZER) if ((r = mutex_static_init(m))) return r; \
-	if ( ( ((mutex_t *)(*m))->valid != (unsigned int)LIFE_MUTEX ) ) return EINVAL; }
+	if (STATIC_INITIALIZER(*m)) { if ((r = mutex_static_init(m))) return r; }\
+	else if ( ( ((mutex_t *)(*m))->valid != (unsigned int)LIFE_MUTEX ) ) return EINVAL; }
 
 #define LIFE_MUTEX 0xBAB1F00D
 #define DEAD_MUTEX 0xDEADBEEF
@@ -37,8 +42,10 @@ struct mutex_t
 	DWORD owner;
 #if defined USE_MUTEX_Mutex
     HANDLE h;
+	HANDLE sem;
 #else /* USE_MUTEX_CriticalSection.  */
     CRITICAL_SECTION cs;
+	/* use the sem of cs */
 #endif
 };
 

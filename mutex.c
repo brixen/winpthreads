@@ -4,18 +4,24 @@
 #include "mutex.h"
 #include "misc.h"
 
-inline int mutex_static_init(volatile pthread_mutex_t *m)
+inline int mutex_static_init(volatile pthread_mutex_t *m )
 {
-    pthread_mutex_t m_tmp, *m_replaced;
-	int r = pthread_mutex_init(&m_tmp, NULL);
+    pthread_mutex_t m_tmp;
+	mutex_t *mi, *m_replaced;
+	mi = (mutex_t *)*m;
+	if (!STATIC_INITIALIZER(mi)) {
+		/* Assume someone crept in between: */
+		return 0;
+	}
 
+	int r = pthread_mutex_init(&m_tmp, NULL);
+	((mutex_t *)m_tmp)->type = MUTEX_INITIALIZER2TYPE(mi);
 	if (!r) {
-		m_replaced = (pthread_mutex_t *)InterlockedCompareExchangePointer(
+		m_replaced = (mutex_t *)InterlockedCompareExchangePointer(
 			(PVOID *)m, 
 			m_tmp,
-			PTHREAD_MUTEX_INITIALIZER);
-		if (m_replaced != (pthread_mutex_t *)PTHREAD_MUTEX_INITIALIZER) {
-			printf("mutex_static_init race detected: mutex %p\n",  m_replaced);
+			mi);
+		if (m_replaced != mi) {
 			/* someone crept in between: */
 			pthread_mutex_destroy(&m_tmp);
 			/* it could even be destroyed: */
@@ -184,12 +190,41 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 	return 0;
 }
 #else /* USE_MUTEX_CriticalSection */
+static int mutex_normal_handle_deadlk(mutex_t *_m)
+{
+	_pthread_crit_u cu;
+	cu.cs = &_m->cs;
+	/* Now hang in the semaphore until released by another thread */
+	/* The latter is undefined behaviour and thus NOT portable */
+	while(WaitForSingleObject(cu.pc->sem, INFINITE));
+	if (!COND_OWNER(_m)) return EINVAL; /* or should this be an assert ? */
+	return 0;
+}
+
+static int mutex_normal_handle_undefined(mutex_t *_m)
+{
+	_pthread_crit_u cu;
+	LONG previousCount;
+	cu.cs = &_m->cs;
+	/* Release the semaphore locked by another thread */
+	/* This is undefined behaviour and thus NOT portable */
+	ReleaseSemaphore(cu.pc->sem, 1, &previousCount);
+	return 0;
+}
+
+
 int pthread_mutex_lock(pthread_mutex_t *m)
 {
 	INIT_MUTEX(m);
 	mutex_t *_m = (mutex_t *)*m;
 
-	CHECK_DEADLK(_m);
+	if (_m->type == PTHREAD_MUTEX_NORMAL) {
+		if (COND_DEADLK(_m)) {
+			return mutex_normal_handle_deadlk(_m);
+		}
+	} else {
+		CHECK_DEADLK(_m);
+	}
 	EnterCriticalSection(&_m->cs);
 	SET_OWNER(_m);
 	return 0;
@@ -208,7 +243,16 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 	/* And also call INIT_MUTEX() for us */
     if ( !(r=pthread_mutex_trylock(m)) ) return 0;
 	if ( r != EBUSY ) return r;
-	
+
+	if (_m->type == PTHREAD_MUTEX_NORMAL) {
+		if (COND_DEADLK(_m)) {
+			return mutex_normal_handle_deadlk(_m);
+		}
+	} else {
+		CHECK_DEADLK(_m);
+	}
+	EnterCriticalSection(&_m->cs);
+
 	ct = _pthread_time_in_ms();
 	t = _pthread_time_in_ms_from_timespec(ts);
 	
@@ -237,6 +281,16 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
 {
 	CHECK_MUTEX(m); 
 	mutex_t *_m = (mutex_t *)*m;
+	if (_m->type == PTHREAD_MUTEX_NORMAL) {
+		if (!COND_LOCKED(_m)) {
+			return EPERM;
+		} else if (!COND_OWNER(_m)){
+			return mutex_normal_handle_undefined(_m);
+		}
+	} else if (!COND_OWNER(_m)){
+		return EPERM;
+	}
+
 	UNSET_OWNER(_m);
 #ifdef WINPTHREAD_DBG
 	_pthread_crit_u cu;
@@ -254,7 +308,9 @@ int pthread_mutex_trylock(pthread_mutex_t *m)
 {
 	INIT_MUTEX(m); 
 	mutex_t *_m = (mutex_t *)*m;
-	CHECK_DEADLK(_m);
+	if ((_m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(_m)) {
+		return EBUSY;
+	}
 	int r = TryEnterCriticalSection(&_m->cs) ? 0 : EBUSY;
 	if (!r) SET_OWNER(_m);
 	return r;
