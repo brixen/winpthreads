@@ -57,17 +57,17 @@
 #define USE_MUTEX_CriticalSection_SpinCount	0
 
 /* A few ways to implement pthread_mutex:  */
-//#define USE_MUTEX_Mutex 1
+#define USE_MUTEX_Mutex 1
 /* Faster than Mutex but NOT cross-process.  */
-#define USE_MUTEX_CriticalSection 1
+//#define USE_MUTEX_CriticalSection 1
 
 /* A few ways to implement pthread_cond:  */
 /* default.  */
-//#define USE_COND_Semaphore 1
+#define USE_COND_Semaphore 1
 /* USE_COND_SignalObjectAndWait has a flaw at timeout, hopefully fixed.  */
 //#define USE_COND_SignalObjectAndWait 1
 /* USE_COND_ConditionVariable is Windows Vista+, NOT cross-process.  */
-#define USE_COND_ConditionVariable 1
+//#define USE_COND_ConditionVariable 1
 
 /* A few ways to implement pthread_rwlock:  */
 /* default, use pthread_cond above.  */

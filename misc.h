@@ -4,6 +4,12 @@
 #define UINT2PTR(x)								((void *)(uintptr_t)(x))
 #define PTR2INT(x)								((int)(uintptr_t)(x))
 
+#if SIZE_MAX>UINT_MAX
+typedef long long LONGBAG;
+#else
+typedef long LONGBAG;
+#endif
+
 #define CHECK_HANDLE(h) { DWORD dwFlags; \
     if (!(h) || ((h) == INVALID_HANDLE_VALUE) || !GetHandleInformation((h), &dwFlags)) \
     return EINVAL; }
