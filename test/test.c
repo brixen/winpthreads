@@ -288,6 +288,8 @@ int mutex_main(void)
 	int                   rc=0;
 	int                   i;
 
+    int tid = pthread_self()->tid;
+    printf("Main thread %d: Entered\n", tid);
 	printf("Enter Testcase - mutex_main %s\n",testType);
 	if (strcmp(testType,"static") == 0) {
 		mutex = PTHREAD_DEFAULT_MUTEX_INITIALIZER;
@@ -312,11 +314,11 @@ int mutex_main(void)
 
 	printf("Hold Mutex to prevent access to shared data o=%d\n",0);
 	rc = pthread_mutex_lock(&mutex);
-	printf("Mutex inited type=%d o=%d\n", ((mutex_t *)mutex)->type,((mutex_t *)mutex)->owner);
+	printf("Mutex inited type=%d o=%d\n", ((mutex_t *)mutex)->type,GET_OWNER(((mutex_t *)mutex)));
 	printf("Unlock Mutex to prevent access to shared data\n");
 	checkResults("pthread_mutex_lock()\n", rc);
 	rc = pthread_mutex_unlock(&mutex);
-	printf("Unlocked Mutex to prevent access to shared data o=%d\n",((mutex_t *)mutex)->owner);
+	printf("Unlocked Mutex to prevent access to shared data o=%d\n",GET_OWNER(((mutex_t *)mutex)));
 	checkResults("pthread_mutex_unlock()\n",rc);
 	printf("Hold Mutex to prevent access to shared data 2\n");
 	rc = pthread_mutex_lock(&mutex);

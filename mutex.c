@@ -187,7 +187,7 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 	}
 	_m->valid		= DEAD_MUTEX;
 	_m->owner		= 0;
-	_m->lockOwner		= 0;
+	_m->lockOwner	= 0;
 	_m->semExt		= NULL;
 	_m->lockExt		= 0;
 
@@ -198,8 +198,8 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 	if (!r) {
 		if ( (_m->h = CreateMutex(NULL, FALSE, NULL)) != NULL) {
 			if (_m->type == PTHREAD_MUTEX_NORMAL) {
-				/* Prevent multiple (external) unlocks from messing up the semaphore signal state
-				 * by setting lMaximumCount to 1
+				/* Prevent multiple (external) unlocks from messing up the semaphore signal state.
+				 * Setting lMaximumCount to 1 is not enough, we also use _m->lockExt.
 				 */
 				_m->semExt = CreateSemaphore (NULL, 0, 1, NULL);
 				if (!_m->semExt) {

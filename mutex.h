@@ -7,6 +7,7 @@
 #define COND_DEADLK(m)	COND_OWNER(m)
 #define CHECK_DEADLK(m)	if ((m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(m))\
 							return EDEADLK
+#define GET_OWNER(m)	(((_tid_u)m->cs.OwningThread).tid)
 #define SET_OWNER(m)
 #define UNSET_OWNER(m)
 #else
@@ -15,6 +16,7 @@
 #define COND_DEADLK(m)	COND_OWNER(m)
 #define CHECK_DEADLK(m)	{ if ((m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(m))\
 							return EDEADLK; }
+#define GET_OWNER(m)	(m->owner)
 #define SET_OWNER(m)	{ if (m->type != PTHREAD_MUTEX_RECURSIVE) \
 							m->owner = GetCurrentThreadId(); \
 						else \
