@@ -24,9 +24,32 @@ inline int mutex_static_init(volatile pthread_mutex_t *m )
 		if (m_replaced != mi) {
 			/* someone crept in between: */
 			pthread_mutex_destroy(&m_tmp);
-			/* it could even be destroyed: */
+			/* But it could also be destroyed already: */
 			if (!m_replaced) r = EINVAL;
 		}
+	}
+	return r;
+}
+
+int mutex_static_destroy(volatile pthread_mutex_t *m )
+{
+    pthread_mutex_t m_tmp;
+	mutex_t *mi, *m_replaced;
+	int r =0;
+
+	if ( !STATIC_INITIALIZER(mi = (mutex_t *)*m) ) {
+		/* Assume someone crept in between: */
+		return 0;
+	}
+
+	m_replaced = (mutex_t *)InterlockedCompareExchangePointer(
+		(PVOID *)m, 
+		NULL,
+		mi);
+	if (m_replaced != mi) {
+		/* someone crept in between (with a lock() probably), continue normal path */
+		/* But it could also be destroyed already: */
+		if (!m_replaced) r = EINVAL;
 	}
 	return r;
 }
@@ -139,13 +162,13 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 		WaitForSingleObject(cu.pc->sem, t - ct);
 		
 		/* Try to grab lock */
-		if (!pthread_mutex_trylock(m)) return 0;
+		if (!pthread_mutex_trylock(m)) break;
 #endif
 		/* Get current time */
         ct = _pthread_time_in_ms();
     }
 	SET_OWNER(_m);
-	return 0;
+	return r;
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *m)
@@ -286,10 +309,12 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 	int r = 0;
 
 	if (!m || !*m)	return EINVAL; 
-	if (STATIC_INITIALIZER(*m)) {
-		*m = NULL;
-		return 0;
+
+	if ( STATIC_INITIALIZER(*m) ) {
+		 if ((r = mutex_static_destroy(m))) return r;
+		 if (*m == NULL) return 0;
 	}
+
 	if (_m->valid != LIFE_MUTEX) {
 		return EINVAL;
 	}
