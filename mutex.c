@@ -336,8 +336,6 @@ int pthread_mutexattr_gettype(pthread_mutexattr_t *a, int *type)
 int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type)
 {
     if ((unsigned) type > 3) return EINVAL;
-	/* We support DEFAULT==ERRORCHECK semantics + RECURSIVE: */
-    if ((unsigned) type == PTHREAD_MUTEX_NORMAL) return ENOTSUP;
     *a &= ~3;
     *a |= type;
 
