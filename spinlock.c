@@ -1,8 +1,12 @@
 #include <windows.h>
+#include <stdio.h>
 #include "pthread.h"
 #include "spinlock.h"
 #include "misc.h"
       
+static int scnt = 0;
+static int scntMax = 0;
+
 int pthread_spin_init(pthread_spinlock_t *l, int pshared)
 {
  	spin_t *_l;
@@ -74,6 +78,59 @@ int pthread_spin_trylock(pthread_spinlock_t *l)
 	return r;
 }
 
+int _spin_lite_getsc(int reset)
+{
+	int r = scnt;
+	if (reset) scnt = 0;
+	return r;
+}
+
+int _spin_lite_getscMax(int reset)
+{
+	int r = scntMax;
+	if (reset) scntMax = 0;
+	return r;
+}
+
+int _spin_lite_trylock(spin_t *l)
+{
+	CHECK_SPINLOCK_LITE(l);
+	return InterlockedExchange(&l->l, EBUSY);
+}
+int _spin_lite_unlock(spin_t *l)
+{
+    CHECK_SPINLOCK_LITE(l);
+	/* Compiler barrier.  The store below acts with release symmantics.  */
+    _ReadWriteBarrier();
+	l->l = 0;
+
+    return 0;
+}
+int _spin_lite_lock(spin_t *l)
+{
+    CHECK_SPINLOCK_LITE(l);
+	int lscnt = 0;
+
+	_vol_spinlock v;
+	v.l = (LONG *)&l->l;
+    while (InterlockedExchange(v.lv, EBUSY))
+    {
+		_spin_lite_lock_cnt(lscnt);
+		/* Don't lock the bus whilst waiting */
+        while (*v.lv)
+        {
+			_spin_lite_lock_cnt(lscnt);
+            YieldProcessor();
+
+            /* Compiler barrier.  Prevent caching of *l */
+            _ReadWriteBarrier();
+        }
+    }
+	_spin_lite_lock_stat(lscnt);
+    return 0;
+}
+
+
 int pthread_spin_unlock(pthread_spinlock_t *l)
 {
     CHECK_SPINLOCK(l);
@@ -81,9 +138,9 @@ int pthread_spin_unlock(pthread_spinlock_t *l)
 	CHECK_PERM_SL(_l);
 
 	/* Compiler barrier.  The store below acts with release symmantics.  */
+   _ReadWriteBarrier();
 	UNSET_OWNER_SL(_l);
-    _ReadWriteBarrier();
-   _l->l = 0;
+    _l->l = 0;
 
     return 0;
 }

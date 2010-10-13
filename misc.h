@@ -1,6 +1,26 @@
 #ifndef WIN_PTHREADS_MISC_H
 #define WIN_PTHREADS_MISC_H
 
+#ifndef assert
+
+#ifndef ASSERT_TRACE
+# define ASSERT_TRACE 0
+#else
+# undef ASSERT_TRACE
+# define ASSERT_TRACE 1
+#endif
+
+# define assert(e) \
+   ((e) ? ((ASSERT_TRACE) ? fprintf(stderr, \
+                                    "Assertion succeeded: (%s), file %s, line %d\n", \
+			            #e, __FILE__, (int) __LINE__), \
+	                            fflush(stderr) : \
+                             0) : \
+          (fprintf(stderr, "Assertion failed: (%s), file %s, line %d\n", \
+                   #e, __FILE__, (int) __LINE__), exit(1), 0))
+
+#endif
+
 #define UINT2PTR(x)								((void *)(uintptr_t)(x))
 #define PTR2INT(x)								((int)(uintptr_t)(x))
 

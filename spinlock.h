@@ -6,6 +6,8 @@
 		|| ( ((spin_t *)(*l))->valid != (unsigned int)LIFE_SPINLOCK ) ) \
         return EINVAL; }
 
+#define CHECK_SPINLOCK_LITE(l) if (!(l)) return EINVAL;
+
 #ifdef USE_SPINLOCK_DEADLK
 
 #define CHECK_DEADLK_SL(l)	if (l->owner == GetCurrentThreadId()) \
@@ -21,6 +23,14 @@
 #define SET_OWNER_SLIF(l,r)	
 #define UNSET_OWNER_SL(l)
 
+#endif
+
+#ifdef USE_SPINLOCK_DBG
+#define _spin_lite_lock_cnt(c)	c++
+#define _spin_lite_lock_stat(c)	{scntMax = (c > scntMax) ? c : scntMax;	scnt += lscnt;}
+#else
+#define _spin_lite_lock_cnt(c)
+#define _spin_lite_lock_stat(c)
 #endif
 
 #ifdef USE_SPINLOCK_EPERM
@@ -46,5 +56,15 @@ union _vol_spinlock {
 	LONG *l;
 	volatile LONG *lv;
 };
+
+int _spin_lite_trylock(spin_t *l);
+
+int _spin_lite_unlock(spin_t *l);
+
+int _spin_lite_lock(spin_t *l);
+
+int _spin_lite_getsc(int reset);
+
+int _spin_lite_getscMax(int reset);
 
 #endif

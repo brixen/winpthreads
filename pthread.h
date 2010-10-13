@@ -49,6 +49,8 @@
 //#define WINPTHREAD_DBG 1
 
 /* Compatibility stuff: */
+/* contention analysis, etc: */
+#define USE_SPINLOCK_DBG					1
 /* deadlock detection is optional for spinlocks */
 #define USE_SPINLOCK_DEADLK					1
 /* checking if de calling thread holds the lock at unlock is optional */
@@ -67,6 +69,7 @@
 /* USE_COND_SignalObjectAndWait has a flaw at timeout, hopefully fixed.  */
 //#define USE_COND_SignalObjectAndWait 1
 /* USE_COND_ConditionVariable is Windows Vista+, NOT cross-process.  */
+
 //#define USE_COND_ConditionVariable 1
 
 /* A few ways to implement pthread_rwlock:  */
