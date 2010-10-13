@@ -71,7 +71,7 @@ static inline int mutex_ref(volatile pthread_mutex_t *m )
 {
 	int r = 0;
 
-	_INIT_MUTEX(m);
+	INIT_MUTEX(m);
 	_spin_lite_lock(&mutex_global);
 
 	if (!m || !*m) r = EINVAL;
