@@ -39,4 +39,6 @@ struct _pthread_v
 #define pthread_cleanup_pop(E)\
     (pthread_self()->clean = _pthread_cup.next, (E?_pthread_cup.func((pthread_once_t *)_pthread_cup.arg):0));}
 
+int _pthread_tryjoin(pthread_t t, void **res);
+
 #endif

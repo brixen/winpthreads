@@ -637,6 +637,26 @@ int pthread_join(pthread_t t, void **res)
     return 0;
 }
 
+int _pthread_tryjoin(pthread_t t, void **res)
+{
+    struct _pthread_v *tv = t;
+
+    CHECK_THREAD(tv);
+    if (pthread_equal(pthread_self(), t)) return EDEADLK;
+
+    pthread_testcancel();
+
+    if(WaitForSingleObject(tv->h, 0))return EBUSY;
+    CloseHandle(tv->h);
+
+    /* Obtain return value */
+    if (res) *res = tv->ret_arg;
+
+    free(tv);
+
+    return 0;
+}
+
 int pthread_detach(pthread_t t)
 {
     struct _pthread_v *tv = t;
