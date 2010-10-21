@@ -264,10 +264,9 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
     return result;
 }
-#else
+#else /* USE_RWLOCK_SRWLock */
 int pthread_rwlock_init(pthread_rwlock_t *rwlock_, pthread_rwlockattr_t *a)
 {
-    int result=0;
 	rwlock_t *rwlock;
 
 	if ( !(rwlock = (pthread_rwlock_t)malloc(sizeof(*rwlock))) ) {
@@ -284,8 +283,6 @@ int pthread_rwlock_init(pthread_rwlock_t *rwlock_, pthread_rwlockattr_t *a)
 
 int pthread_rwlock_destroy(pthread_rwlock_t *rwlock_)
 {
-    int result=0;
-    
     CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 
@@ -379,7 +376,6 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock_)
 int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock_, struct timespec *ts)
 {
     CHECK_RWLOCK(rwlock_);
-	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 
 	unsigned long long ct = _pthread_time_in_ms();
 	unsigned long long t = _pthread_time_in_ms_from_timespec(ts);
@@ -403,7 +399,6 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock_, struct timespec *ts)
 int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock_, struct timespec *ts)
 {
     CHECK_RWLOCK(rwlock_);
-	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 
 	unsigned long long ct = _pthread_time_in_ms();
 	unsigned long long t = _pthread_time_in_ms_from_timespec(ts);

@@ -6,8 +6,7 @@
 int pthread_barrier_destroy(pthread_barrier_t *b_)
 {
     int r = 0;
-    int result=0;
-	
+ 	
 	CHECK_BARRIER(b_);
 	barrier_t *b = (barrier_t *)*b_;
 	

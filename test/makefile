@@ -1,5 +1,5 @@
 test.o: test.c
-	gcc -c -m64 test.c
+	gcc -c -m64 -I ../include -I ../src test.c
 
 test.exe: test.o
 	gcc -static  -m64 -o test.exe test.o -L.. -lpthread

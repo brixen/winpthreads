@@ -24,7 +24,7 @@ static int mutex_normal_handle_undefined(mutex_t *_m)
 	/* This is undefined behaviour and thus NOT portable */
 	if (_m && _m->semExt && InterlockedExchange(&_m->lockExt, 0)) {
 		/* only 1 unlock should actually release the semaphore */
-		printf("mutex ext unlock: from thread %d of thread %d\n",GetCurrentThreadId(), GET_OWNER(_m));
+		printf("mutex ext unlock: from thread %d of thread %d\n",(int)GetCurrentThreadId(), (int)GET_OWNER(_m));
 		ReleaseSemaphore(_m->semExt, 1, NULL);
 	}
 	return 0;
@@ -41,9 +41,15 @@ void mutex_print(volatile pthread_mutex_t *m, char *txt)
 	if (!print_state) return;
 	mutex_t *m_ = (mutex_t *)*m;
 	if (m_ == NULL) {
-		printf("M%p %d %s\n",*m,GetCurrentThreadId(),txt);
+		printf("M%p %d %s\n",*m,(int)GetCurrentThreadId(),txt);
 	} else {
-		printf("M%p %d V=%0X B=%d t=%d o=%d C=%d R=%d H=%p %s\n",*m, GetCurrentThreadId(), m_->valid, m_->busy,m_->type,GET_OWNER(m_),GET_LOCKCNT(m_),GET_RCNT(m_),GET_HANDLE(m_),txt);
+		printf("M%p %d V=%0X B=%d t=%d o=%d C=%d R=%d H=%p %s\n",
+			*m, 
+			(int)GetCurrentThreadId(), 
+			(int)m_->valid, 
+			(int)m_->busy,
+			m_->type,
+			(int)GET_OWNER(m_),(int)GET_LOCKCNT(m_),(int)GET_RCNT(m_),GET_HANDLE(m_),txt);
 	}
 }
 
@@ -322,7 +328,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
     {
 		/* Have we waited long enough? A high count means we busy-waited probably.*/
         if (ct >= t) {
-			printf("%d: Timeout after %d times\n",GetCurrentThreadId(), i);
+			printf("%d: Timeout after %d times\n",(int)GetCurrentThreadId(), i);
 			return mutex_unref(m,ETIMEDOUT);
 		}
 
@@ -367,7 +373,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 					return mutex_unref(m,0);
 				default:
 					LOCK_UNDO(_m);
-					printf("GLE: %d\n",GetLastError());
+					printf("GLE: %d\n",(int)GetLastError());
 					return mutex_unref(m,EINVAL);
 			}
 		} else {

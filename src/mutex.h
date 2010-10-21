@@ -74,7 +74,7 @@ struct mutex_t
 	DWORD owner;
     HANDLE h;
 #else /* USE_MUTEX_CriticalSection.  */
-    csu cs;
+    _csu cs;
 #endif
 	/* Prevent multiple (external) unlocks from messing up the semaphore signal state */
 	HANDLE semExt;

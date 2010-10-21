@@ -1,12 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "../pthread.h"
-#include "../thread.h"
-#include "../spinlock.h"
-#include "../mutex.h"
-#include "../cond.h"
-#include "../misc.h"
+#include <pthread.h>
+#include <thread.h>
+#include <spinlock.h>
+#include <mutex.h>
+#include <cond.h>
+#include <misc.h>
 
 #define MAX_THREAD 1000
 #define N_THREAD 40

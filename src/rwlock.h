@@ -11,11 +11,22 @@
 
 #ifndef SRWLOCK_INIT
 #define RTL_SRWLOCK_INIT {0}   
+#define SRWLOCK_INIT RTL_SRWLOCK_INIT
+
 typedef struct _RTL_SRWLOCK {                            
         PVOID Ptr;                                       
-} RTL_SRWLOCK, *PRTL_SRWLOCK;                            
+} RTL_SRWLOCK, *PRTL_SRWLOCK;  
+
 typedef RTL_SRWLOCK SRWLOCK, *PSRWLOCK;
-#endif
+
+WINBASEAPI VOID WINAPI InitializeSRWLock(PSRWLOCK SRWLock);
+WINBASEAPI VOID WINAPI ReleaseSRWLockExclusive(PSRWLOCK SRWLock);
+WINBASEAPI VOID WINAPI ReleaseSRWLockShared(PSRWLOCK SRWLock);
+WINBASEAPI VOID WINAPI AcquireSRWLockExclusive(PSRWLOCK SRWLock);
+WINBASEAPI VOID WINAPI AcquireSRWLockShared(PSRWLOCK SRWLock);
+WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
+WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockShared(PSRWLOCK SRWLock);
+#endif /* SRWLOCK_INIT */
 
 typedef struct rwlock_t rwlock_t;
 struct rwlock_t {
