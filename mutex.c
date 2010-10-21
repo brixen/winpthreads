@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <winternl.h>
 #include <stdio.h>
 #include "pthread.h"
 #include "spinlock.h"
@@ -42,7 +43,7 @@ void mutex_print(volatile pthread_mutex_t *m, char *txt)
 	if (m_ == NULL) {
 		printf("M%p %d %s\n",*m,GetCurrentThreadId(),txt);
 	} else {
-		printf("M%p %d V=%0X B=%d t=%d o=%d %s\n",*m, GetCurrentThreadId(), m_->valid, m_->busy,m_->type,GET_OWNER(m_),txt);
+		printf("M%p %d V=%0X B=%d t=%d o=%d C=%d R=%d H=%p %s\n",*m, GetCurrentThreadId(), m_->valid, m_->busy,m_->type,GET_OWNER(m_),GET_LOCKCNT(m_),GET_RCNT(m_),GET_HANDLE(m_),txt);
 	}
 }
 
@@ -58,11 +59,16 @@ inline int mutex_unref(volatile pthread_mutex_t *m, int r)
 /* External: must be called by owner of a locked mutex: */
 inline int mutex_ref_ext(volatile pthread_mutex_t *m)
 {
+	int r = 0;
 	mutex_t *m_ = (mutex_t *)*m;
 	_spin_lite_lock(&mutex_global);
-	m_->busy ++;
+
+	if (!m || !*m ) r = EINVAL;
+	else if (STATIC_INITIALIZER(m) || !COND_OWNER(m_)) r = EPERM;
+	else m_->busy ++;
+
 	_spin_lite_unlock(&mutex_global);
-	return 0;
+	return r;
 }
 
 /* Set the mutex to busy in a thread-safe way */
@@ -144,7 +150,7 @@ static inline int mutex_ref_init(volatile pthread_mutex_t *m )
 	_spin_lite_lock(&mutex_global);
 	
 	if (!m)  r = EINVAL;
-	else if (*m) {
+	else if (*m && !STATIC_INITIALIZER(*m)) {
 		mutex_t *m_ = (mutex_t *)*m;
 		if (m_->valid == LIFE_MUTEX) r = EBUSY;
 	}
@@ -157,7 +163,7 @@ static inline int mutex_ref_init(volatile pthread_mutex_t *m )
 
 inline int mutex_static_init(volatile pthread_mutex_t *m )
 {
-    pthread_mutex_t m_tmp;
+    pthread_mutex_t m_tmp=NULL;
 	mutex_t *mi, *m_replaced;
 
 	if ( !STATIC_INITIALIZER(mi = (mutex_t *)*m) ) {
@@ -207,21 +213,94 @@ int pthread_mutex_lock(pthread_mutex_t *m)
            return mutex_unref(m,EINVAL);
     }
 #else /* USE_MUTEX_CriticalSection */
-	EnterCriticalSection(&_m->cs);
+	EnterCriticalSection(&_m->cs.cs);
 #endif
 	SET_OWNER(_m);
 	return mutex_unref(m,r);
 
 }
 
+/*	
+	See this article: http://msdn.microsoft.com/nl-nl/magazine/cc164040(en-us).aspx#S8
+	Unfortunately, behaviour has changed in Win 7 and maybe Vista (untested). Who said
+	"undocumented"? Some testing and tracing revealed the following:
+	On Win 7:
+	- LockCount is DECREMENTED with 4. The low bit(0) is set when the cs is unlocked. 
+	  Also bit(1) is set, so lock sequence goes like -2,-6, -10 ... etc.
+	- The LockSemaphore event is only auto-initialized at contention. 
+	  Although pthread_mutex_timedlock() seemed to work, it just busy-waits, because
+	  WaitForSingleObject() always returns WAIT_FAILED+INVALID_HANDLE. 
+	Solution on Win 7:
+	- The LockSemaphore member MUST be auto-initialized and only at contention. 
+	  Pre-initializing messes up the cs state (causes EnterCriticalSection() to hang)
+	- Before the lock (wait): 
+	  - auto-init LockSemaphore
+	  - LockCount is DECREMENTED with 4
+	- Data members must be also correctly updated when the lock is obtained, after
+	  waiting on the event:
+	  - Increment LockCount, setting the low bit
+	  - set RecursionCount to 1
+	  - set OwningThread to CurrentThreadId()
+	- When the wait failed or timed out, reset LockCount (INCREMENT with 4)
+	On Win XP (2000): (untested)
+	- LockCount is updated with +1 as documented in the article,
+	  so lock sequence goes like -1, 0, 1, 2 ... etc.
+	- The event is obviously also auto-initialized in TryEnterCriticalSection. That is, 
+	  we hope so, otherwise the original implementation never worked correctly in the
+	  first place (just busy-waits, munching precious CPU time).
+	- Data members are also correctly updated in TryEnterCriticalSection. Same
+	  hope / assumption here.
+	We do an one-time test lock and draw conclusions based on the resulting value
+	of LockCount: 0=XP behaviour, -2=Win 7 behaviour. Also crossing fingers helps.
+*/
+static LONG LockDelta	= -4; /* Win 7 default */
+
+static inline int _InitWaitCriticalSection(volatile RTL_CRITICAL_SECTION *prc)
+{
+	int r = 0;
+	HANDLE evt;
+	LONG LockCount = prc->LockCount;
+
+	r = 0;
+	if (!prc->OwningThread || !prc->RecursionCount || (LockCount & 1)) {
+		/* not locked (anymore), caller should redo trylock sequence: */
+		return EAGAIN;
+	} else {
+		_ReadWriteBarrier();
+		if( LockCount != InterlockedCompareExchange(&prc->LockCount, LockCount+LockDelta, LockCount) ) {
+			/* recheck here too: */
+			return EAGAIN;
+		}
+	}
+
+	if ( !prc->LockSemaphore) {
+		if (!(evt =  CreateEvent(NULL,FALSE,FALSE,NULL)) ) {
+			InterlockedExchangeAdd(&prc->LockCount, -LockDelta);
+			return ENOMEM;
+		}
+		if(InterlockedCompareExchangePointer(&prc->LockSemaphore,evt,NULL)) {
+			/* someone sneaked in between, keep the original: */
+			CloseHandle(evt);
+		}
+	}
+
+	return r;
+}
+
+/* the wait failed, so we have to restore the LockCount member */
+static inline void _UndoWaitCriticalSection(volatile RTL_CRITICAL_SECTION *prc)
+{
+		InterlockedExchangeAdd(&prc->LockCount, -LockDelta);
+}
+
 int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 {
+	int rwait = 0, i = 0;
 	if (!ts) return EINVAL; 
 	int r = mutex_ref(m);
 	if(r) return r;
 
 	unsigned long long t, ct;
-	
 	
 	/* Try to lock it without waiting */
 	if ( !(r=_mutex_trylock(m)) ) return mutex_unref(m,0);
@@ -232,43 +311,76 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 		if (COND_DEADLK(_m)) {
 			return mutex_unref(m,mutex_normal_handle_deadlk(_m));
 		}
-	} else {
-		if(COND_DEADLK_NR(_m)) {
+	} else if(COND_DEADLK_NR(_m)) {
 			return mutex_unref(m,EDEADLK);
-		}
 	}
+
 	ct = _pthread_time_in_ms();
 	t = _pthread_time_in_ms_from_timespec(ts);
 	
-    while (1)
+	while (1)
     {
- #if defined USE_MUTEX_Mutex
-		/* Have we waited long enough? */
-        if (ct >= t) return mutex_unref(m,ETIMEDOUT);
-        switch (WaitForSingleObject(_m->h, dwMilliSecs(t - ct))) {
-            case WAIT_TIMEOUT:
-                break;
-            case WAIT_OBJECT_0:
-				SET_OWNER(_m);
-				return mutex_unref(m,0);
-			default:
-               return mutex_unref(m,EINVAL);
-        }
-#else /* USE_MUTEX_CriticalSection */
-		_pthread_crit_u cu;
+		/* Have we waited long enough? A high count means we busy-waited probably.*/
+        if (ct >= t) {
+			printf("%d: Timeout after %d times\n",GetCurrentThreadId(), i);
+			return mutex_unref(m,ETIMEDOUT);
+		}
 
-		/* Have we waited long enough? */
-		if (ct > t) return mutex_unref(m,ETIMEDOUT);
-		
-		cu.cs = &_m->cs;
-		/* Wait on semaphore within critical section */
-		WaitForSingleObject(cu.pc->sem, t - ct);
-		
-		/* Try to grab lock */
-		if (!pthread_mutex_trylock(m)) break;
+#if defined USE_MUTEX_CriticalSection
+		/* The cs is locked by another thread here, but we need its LockSemaphore 
+		 * member initialized.
+		 * The article speaks about initializing in LeaveCriticalSection() instead,
+		 * but that would leave us here without an object to wait on:
+		 */
+		switch(( rwait = _InitWaitCriticalSection(&_m->cs.rc) )) {
+			case 0:
+			case EAGAIN:
+               break;
+			default:
+               return mutex_unref(m,rwait);
+        }
 #endif
+        if (!rwait) {
+			switch (WaitForSingleObject(GET_HANDLE(_m), dwMilliSecs(t - ct))) {
+				case WAIT_TIMEOUT:
+					LOCK_UNDO(_m);
+					mutex_print(m,"WAIT_TIMEOUT");
+					break;
+				case WAIT_OBJECT_0:
+					mutex_print(m,"WAIT_OBJECT_0");
+#if defined USE_MUTEX_CriticalSection
+					_tid_u ht = {NULL};
+					/* See article: HANDLE, but contains a tid: */
+					ht.tid =  GetCurrentThreadId();
+					/* Now do what EnterCriticalSection() normally does: */
+					if (InterlockedCompareExchangePointer(&_m->cs.rc.OwningThread, ht.h, NULL)) {
+						LOCK_UNDO(_m);
+						mutex_print(m,"EAGAIN (still owned)");
+						break;
+					}
+					InterlockedIncrement(&_m->cs.rc.LockCount);
+					/* We had to wait on it, so must be 1: */
+					InterlockedExchange(&_m->cs.rc.RecursionCount, 1);
+#endif
+					SET_OWNER(_m);
+					assert(COND_OWNER(_m));
+					return mutex_unref(m,0);
+				default:
+					LOCK_UNDO(_m);
+					printf("GLE: %d\n",GetLastError());
+					return mutex_unref(m,EINVAL);
+			}
+		} else {
+			mutex_print(m,"EAGAIN");
+		}
+
+		/* Try to grab lock */
+		if (!_mutex_trylock(m)) {
+			break;
+		}
 		/* Get current time */
         ct = _pthread_time_in_ms();
+		i ++;
     }
 	SET_OWNER(_m);
 	return  mutex_unref(m,0);
@@ -289,14 +401,16 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
 	} else if (!COND_OWNER(_m)){
 		return mutex_unref(m,EPERM);
 	}
-
-	UNSET_OWNER(_m);
 #if defined USE_MUTEX_Mutex
+	DWORD o=GET_OWNER(_m);
+	UNSET_OWNER(_m);
 	if (!ReleaseMutex(_m->h)) {
+		/* restore our own bookkeeping */
+		SET_TID(_m,o);
         return mutex_unref(m,EPERM);
     }
 #else /* USE_MUTEX_CriticalSection */
-	LeaveCriticalSection(&_m->cs);
+	LeaveCriticalSection(&_m->cs.cs);
 #endif
     return mutex_unref(m,0);
 }
@@ -320,7 +434,7 @@ int _mutex_trylock(pthread_mutex_t *m)
             r = EINVAL;
      }
 #else /* USE_MUTEX_CriticalSection */
-	r = TryEnterCriticalSection(&_m->cs) ? 0 : EBUSY;
+	r = TryEnterCriticalSection(&_m->cs.cs) ? 0 : EBUSY;
 #endif
 	if (!r) SET_OWNER(_m);
 	return r;
@@ -332,6 +446,28 @@ int pthread_mutex_trylock(pthread_mutex_t *m)
 	if(r) return r;
 
 	return mutex_unref(m,_mutex_trylock(m));
+}
+
+static LONG InitOnce	= 1;
+static void _mutex_init_once(mutex_t *m)
+{
+#if defined USE_MUTEX_CriticalSection
+	LONG lc = 0;
+	EnterCriticalSection(&m->cs.cs);
+	lc = m->cs.rc.LockCount;
+	LeaveCriticalSection(&m->cs.cs);
+	switch (lc) {
+	case 0: /* Win XP + 2k(?) */
+		LockDelta = 1;
+		break;
+	case -2:  /* Win 7 + Vista(?) */
+		LockDelta = -4;
+		break;
+	default:
+		/* give up */
+		assert(FALSE);
+	}
+#endif
 }
 
 int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
@@ -354,7 +490,7 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 #if defined USE_MUTEX_Mutex
 		if ( (_m->h = CreateMutex(NULL, FALSE, NULL)) != NULL) {
 #else /* USE_MUTEX_CriticalSection */
-		if (InitializeCriticalSectionAndSpinCount(&_m->cs, USE_MUTEX_CriticalSection_SpinCount)) {
+		if (InitializeCriticalSectionAndSpinCount(&_m->cs.cs, USE_MUTEX_CriticalSection_SpinCount)) {
 #endif
 			if (_m->type == PTHREAD_MUTEX_NORMAL) {
 				/* Prevent multiple (external) unlocks from messing up the semaphore signal state.
@@ -365,7 +501,7 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 #if defined USE_MUTEX_Mutex
 					CloseHandle(_m->h);
 #else /* USE_MUTEX_CriticalSection */
-					DeleteCriticalSection(&_m->cs);
+					DeleteCriticalSection(&_m->cs.cs);
 #endif
 					r = ENOMEM;
 				}
@@ -385,8 +521,10 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 		}
 	} 
 	if (r) {
+		_m->valid		= DEAD_MUTEX;
 		free(_m);
 	} else {
+		if (InterlockedExchange(&InitOnce, 0)) _mutex_init_once(_m);
 		_m->valid		= LIFE_MUTEX;
 		*m = _m;
 	}
@@ -411,7 +549,7 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 #if defined USE_MUTEX_Mutex
 	CloseHandle(_m->h);
 #else /* USE_MUTEX_CriticalSection */
-	DeleteCriticalSection(&_m->cs);
+	DeleteCriticalSection(&_m->cs.cs);
 #endif
 	_m->valid = DEAD_MUTEX;
     _m->type  = 0;

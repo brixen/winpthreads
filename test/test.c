@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include "../pthread.h"
 #include "../thread.h"
@@ -10,11 +11,11 @@
 #define MAX_THREAD 1000
 #define N_THREAD 40
 
-int checkAbort = 1;
+int checkAbort = 0;
 
 #define checkResults(string, val) {             \
  if (val) {                                     \
-   printf("Failed with %d at %s", val, string); \
+   printf("%d: Failed with %d at %s", GetCurrentThreadId(), val, string); \
    if ( checkAbort )exit(1);                    \
  }                                              \
 }
@@ -134,12 +135,13 @@ int spinlock_main(void)
 	return 0;
 }
 /*================================================================================*/
-#define MUTEX_NTHREADS              4000
+#define MUTEX_NTHREADS              500
 #define MUTEX_LOOPCNT				0
 pthread_mutex_t         mutex;
 int                     sharedData=0;
 int                     sharedData2=0;
 int						mwait=30000;
+int						init =0, destr=0;
 
 void *mutex_threadfunc(void *parm)
 {
@@ -147,20 +149,25 @@ void *mutex_threadfunc(void *parm)
    int d;
    int tid = pthread_self()->tid;
    printf("Thread %d: Entered\n", tid);
-   rc = pthread_mutex_lock(&mutex);
+	mutex_print(&mutex,"Lock T");
+rc = pthread_mutex_lock(&mutex);
+   mutex_print(&mutex,"Locked T");
    d= sharedData;
    checkResults("pthread_mutex_lock()\n", rc);
    /********** Critical Section *******************/
    printf("Thread %d: Start critical section, holding lock\n",
           tid);
    /* Access to shared data goes here */
-   ++sharedData; --sharedData2;
-   Sleep(10);
+   ++sharedData;
+   Sleep(500);
+    --sharedData2;
    printf("Thread %d: End critical section, release lock\n",
           tid);
    d -= (sharedData-1);
    /********** Critical Section *******************/
+   mutex_print(&mutex,"UnLock T");
    rc = pthread_mutex_unlock(&mutex);
+   mutex_print(&mutex,"UnLocked T");
    checkResults("pthread_mutex_unlock()\n", rc);
    if (d) {
 		printf("FAILED Thread %d: check sharedData=%d instead of 0\n", tid, d);
@@ -182,10 +189,10 @@ void *mutex_threadfunc_raced(void *parm)
 
    //printf("Thread %d: Entered\n", tid);
    while(1) {
-	   mutex_print(&mutex,"A pthread_mutex_timedlock");
+	   mutex_print(&mutex,"A pthread_mutex_lock");
 	   //rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 8000 ));
 	   rc = pthread_mutex_lock(&mutex);
-	   mutex_print(&mutex,"B pthread_mutex_timedlock");
+	   mutex_print(&mutex,"B pthread_mutex_lock");
 	   if (rc == ETIMEDOUT) {
 		   printf("FAILED Thread %d: pthread_mutex_timedlock ETIMEDOUT\n", tid);
 		   continue;
@@ -194,8 +201,9 @@ void *mutex_threadfunc_raced(void *parm)
 	   d= sharedData;
 	   /********** Critical Section *******************/
 	   /* Access to shared data goes here */
-	   ++sharedData; --sharedData2;
-	   //Sleep(0);
+		++sharedData;
+		Sleep(100);
+		--sharedData2;
 	   d -= (sharedData-1);
 	   /********** Critical Section *******************/
 	   mutex_print(&mutex,"A pthread_mutex_unlock 0");
@@ -212,13 +220,21 @@ void *mutex_threadfunc_raced(void *parm)
 	   }
 	   i = 0;
 	   mutex_print(&mutex, "A pthread_mutex_destroy 0");
-	   rc = pthread_mutex_destroy(&mutex);
+	   rc=0;//rc = pthread_mutex_destroy(&mutex);
 	   mutex_print(&mutex,"B pthread_mutex_destroy 0");
+		if(rc) {
+			mutex_print(&mutex,"cant destroy 0");
+			//break;
+		} else {
+			destr ++;
+			mutex_print(&mutex,"destroyed 0");
+		}
 		checkResultsAlt("pthread_mutex_destroy()\n", rc, EBUSY);
-		while(rc == EBUSY) {
-			mutex_print(&mutex,"A pthread_mutex_lock()");
-			rc1 = pthread_mutex_timedlock(&mutex,starttimer(&ts, 4000 ));
-			mutex_print(&mutex,"B pthread_mutex_lock()");
+		do {
+			mutex_print(&mutex,"A pthread_mutex_timedlock()");
+			//rc1 = pthread_mutex_lock(&mutex);
+			rc1 = pthread_mutex_timedlock(&mutex,starttimer(&ts, 4000000 ));
+			mutex_print(&mutex,"B pthread_mutex_timedlock()");
 			//checkResults("pthread_mutex_lock() destroy\n", rc1);
 			if(rc1) {
 				mutex_print(&mutex,"cant lock");
@@ -233,62 +249,88 @@ void *mutex_threadfunc_raced(void *parm)
 			}
 			//checkResults("pthread_mutex_unlock() destroy\n", rc1);
 			mutex_print(&mutex, "A pthread_mutex_destroy 1");
-			rc = pthread_mutex_destroy(&mutex);
+			rc=0;//rc = pthread_mutex_destroy(&mutex);
 			mutex_print(&mutex, "B pthread_mutex_destroy 1");
 			if(rc) {
 				mutex_print(&mutex,"cant destroy");
 				break;
 			} else {
+				destr ++;
 				mutex_print(&mutex,"destroyed");
 			}
 			checkResultsAlt("pthread_mutex_destroy() 2\n", rc, EBUSY);
 			i ++;
- 	   }
+ 	   } while(rc == EBUSY);
 		if(i)printf("Thread %d: destroy attempts: %d success: %d\n", tid,i,x);
 		mutex_print(&mutex, "A pthread_mutex_init");
-		rc = pthread_mutex_init(&mutex,NULL);
+		rc =0; //rc = pthread_mutex_init(&mutex,NULL);
 		mutex_print(&mutex, "B pthread_mutex_init");
 		if(rc) {
 			mutex_print(&mutex,"cant init");
 			break;
+		} else {
+			init ++;
+			mutex_print(&mutex,"re-inited");
 		}
 		checkResults("pthread_mutex_init()\n", rc);
 
 	   j++;
 	   if (j>MUTEX_LOOPCNT) {
-			//printf("Thread %d: Leaving\n", tid);
+			printf("Thread %d: Leaving\n", tid);
 			break;
 	   }
    }
    return NULL;
 }
  
+static volatile LONG _tid=0;
 void *mutex_threadfunc_timed(void *parm)
 {
    int   rc;
-   int d;
+   int d,e;
    int tid = pthread_self()->tid;
    struct timespec   ts;
    printf("Thread %d: Entered\n", tid);
-   rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 8000 ));
-   d= sharedData;
-   checkResults("pthread_mutex_lock()\n", rc);
+   mutex_print(&mutex,"Lock T");
+   if (rand() & 1) {
+		rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 20000 ));
+		checkResults("XX pthread_mutex_timedlock()\n", rc);
+   } else {
+		rc = pthread_mutex_lock(&mutex);
+		checkResults("YY pthread_mutex_lock()\n", rc);
+   }
+   mutex_print(&mutex,"Locked T");
+   while (rc) {
+		printf("%d: Lock failed with %d\n", tid, rc);
+		rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 2000 ));
+		mutex_print(&mutex,"Locked TR");
+   }
    /********** Critical Section *******************/
+   _tid = GetCurrentThreadId();
+   d= sharedData;
    printf("Thread %d: Start critical section, holding lock\n",
           tid);
    /* Access to shared data goes here */
-   ++sharedData; --sharedData2;
-   Sleep(50);
+   ++sharedData;
+   Sleep(100);
+   if (_tid != tid) {
+		printf("FAILED Thread %d: shared TID = %d\n", tid, _tid);
+		mutex_print(&mutex,"Race cond");
+   }
+   e = sharedData -1;
+   --sharedData2;
    printf("Thread %d: End critical section, release lock\n",
           tid);
-   d -= (sharedData-1);
-   /********** Critical Section *******************/
-   rc = pthread_mutex_unlock(&mutex);
-   checkResults("pthread_mutex_unlock()\n", rc);
+   d -= (e); 
    if (d) {
 		printf("FAILED Thread %d: check sharedData=%d instead of 0\n", tid, d);
-		exit(1);
+		mutex_print(&mutex,"Race cond");
    }
+   _tid = 0;
+   /********** Critical Section *******************/
+   rc = pthread_mutex_unlock(&mutex);
+   mutex_print(&mutex,"UnLocked T");
+   checkResults("pthread_mutex_unlock()\n", rc);
    return NULL;
 }
  
@@ -355,16 +397,24 @@ int mutex_main_timed(void)
 	printf("Enter Testcase - mutex_main_timed %s\n",testType);
 	mutex = PTHREAD_NORMAL_MUTEX_INITIALIZER;
 	printf("Mutex inited\n");
+	rc = pthread_mutex_init (&mutex, NULL);
+	checkResults("pthread_mutex_init()\n", rc);
+	   mutex_print(&mutex,"Locked 0");
 
 	printf("Hold Mutex to prevent access to shared data\n");
-	rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 30000 ));
+	  rc = pthread_mutex_lock(&mutex);
+	//rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 30000 ));
+	   mutex_print(&mutex,"Locked 1");
 	printf("Mutex inited type=%d\n", ((mutex_t *)mutex)->type);
 	printf("Unlock Mutex to prevent access to shared data\n");
 	checkResults("pthread_mutex_lock()\n", rc);
 	rc = pthread_mutex_unlock(&mutex);
 	checkResults("pthread_mutex_unlock()\n",rc);
 	printf("Hold Mutex to prevent access to shared data 2\n");
-	rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 30000 ));
+	mutex_print(&mutex,"Locked 2");
+	//rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 60000 ));
+	rc = pthread_mutex_lock(&mutex);
+	mutex_print(&mutex,"Locked 3");
 	checkResults("pthread_mutex_lock() 2\n", rc);
 
 	printf("Create/start threads\n");
@@ -374,7 +424,7 @@ int mutex_main_timed(void)
 	}
 
 	printf("Wait a bit until we are 'done' with the shared data\n");
-	Sleep(1000);
+	Sleep(5000);
 	printf("Unlock shared data\n");
 	rc = pthread_mutex_unlock(&mutex);
 	checkResults("pthread_mutex_lock()\n",rc);
@@ -396,7 +446,7 @@ int mutex_main_raced(void)
 	//pthread_t             thread[MUTEX_NTHREADS];
 	pthread_t             *thread;
 	int                   rc=0;
-	int                   i;
+	int                   i, f=0, F=0;
 	struct timespec   ts;
 
 	mutex_print_set(1);
@@ -407,14 +457,16 @@ int mutex_main_raced(void)
 	printf("Mutex inited\n");
 
 	printf("Hold Mutex to prevent access to shared data\n");
-	rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 3000 ));
+	//rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 3000000 ));
+	rc = pthread_mutex_lock(&mutex);
 	printf("Mutex inited type=%d\n", ((mutex_t *)mutex)->type);
 	printf("Unlock Mutex to prevent access to shared data\n");
 	checkResults("pthread_mutex_timedlock()\n", rc);
 	rc = pthread_mutex_unlock(&mutex);
 	checkResults("pthread_mutex_unlock() 1\n",rc);
 	printf("Hold Mutex to prevent access to shared data 2\n");
-	rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 3000 ));
+	//rc = pthread_mutex_timedlock(&mutex,starttimer(&ts, 3000000 ));
+	rc = pthread_mutex_lock(&mutex);
 	checkResults("pthread_mutex_timedlock() 2\n", rc);
 
 	rc = pthread_mutex_unlock(&mutex);
@@ -429,18 +481,35 @@ int mutex_main_raced(void)
 	printf("Wait a bit until we are 'done' with the shared data\n");
 	printf("Unlock shared data\n");
 	printf("Wait for the threads to complete, and release their resources\n");
-	Sleep(10000);
+	Sleep(40000);
 	printf("Done\n");
-	for (i=0; i <MUTEX_NTHREADS; ++i) {
-		rc = pthread_join(thread[i], NULL);
-		checkResults("pthread_join()\n", rc);
-	}
+	mutex_print(&mutex,"Done");
+	do {
+		f = 0;
+		for (i=0; i <MUTEX_NTHREADS; ++i) {
+			if( thread[i] ) {
+				rc = pthread_join(thread[i], NULL);
+				if (rc) {
+					f++;
+					printf("_pthread_tryjoin failed: %d %d %d\n",i, rc,thread[i]->tid);
+				} else {
+					thread[i] = NULL;
+					printf("_pthread_tryjoin OK: %d\n",i);
+				}
+			}
+		}
+		printf("Joins failed: %d destr: %d init: %d\n",f,destr,init);
+		F += f;
+		Sleep(1000);
+	} while (0);
 
+	printf("Joins total failed: %d destr: %d init: %d\n",F,destr,init);
 	printf("Clean up, data: %d %d\n",sharedData,sharedData2);
 	mutex_print(&mutex, "A Clean up");
 	rc = pthread_mutex_destroy(&mutex);
 	mutex_print(&mutex, "B Clean up");
 	printf("Main completed spincount = %d\n", _spin_lite_getsc(0));
+	printf("Main completed spinlocks = %d\n", _spin_lite_getbsc(0));
 	printf("Main completed Max spincount = %d\n", _spin_lite_getscMax(0));
 	printf("Main completed Avg spincount/thread = %f\n", (float)((float)_spin_lite_getsc(0)/(float)MUTEX_NTHREADS));
 	return 0;
@@ -478,22 +547,24 @@ int mutex_main(void)
 		printf("Mutex inited\n");
 		checkResults("pthread_mutex_init()\n", rc);
 	}
-	printf("Mutex inited\n");
 
 	printf("Hold Mutex to prevent access to shared data o=%d\n",0);
+	mutex_print(&mutex,"Lock");
 	rc = pthread_mutex_lock(&mutex);
+	mutex_print(&mutex,"Locked");
 	printf("Mutex inited type=%d o=%d\n", ((mutex_t *)mutex)->type,GET_OWNER(((mutex_t *)mutex)));
 	printf("Unlock Mutex to prevent access to shared data\n");
 	checkResults("pthread_mutex_lock()\n", rc);
 	rc = pthread_mutex_unlock(&mutex);
+		mutex_print(&mutex,"UnLocked");
 	printf("Unlocked Mutex to prevent access to shared data o=%d\n",GET_OWNER(((mutex_t *)mutex)));
 	checkResults("pthread_mutex_unlock()\n",rc);
 	printf("Hold Mutex to prevent access to shared data 2\n");
 	rc = pthread_mutex_lock(&mutex);
 	checkResults("pthread_mutex_lock() 2\n", rc);
-
+	mutex_print(&mutex,"Locked 2");
 	printf("Create/start threads\n");
-	for (i=0; i<MUTEX_NTHREADS; ++i) {
+	for (i=0; i<10; ++i) {
 		rc = pthread_create(&thread[i], NULL, mutex_threadfunc, NULL);
 		checkResults("pthread_create()\n", rc);
 	}
@@ -502,10 +573,11 @@ int mutex_main(void)
 	Sleep(3000);
 	printf("Unlock shared data\n");
 	rc = pthread_mutex_unlock(&mutex);
-	checkResults("pthread_mutex_lock()\n",rc);
+	mutex_print(&mutex,"UnLocked 2");
+	checkResults("pthread_mutex_unlock()\n",rc);
 
 	printf("Wait for the threads to complete, and release their resources\n");
-	for (i=0; i <MUTEX_NTHREADS; ++i) {
+	for (i=0; i <10; ++i) {
 		rc = pthread_join(thread[i], NULL);
 		checkResults("pthread_join()\n", rc);
 	}
@@ -513,6 +585,7 @@ int mutex_main(void)
 	printf("Clean up, data: %d %d\n",sharedData,sharedData2);
 	rc = pthread_mutex_destroy(&mutex);
 	printf("Main completed\n");
+	Sleep(6000);
 	return 0;
 }
 #if 1

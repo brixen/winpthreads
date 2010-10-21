@@ -2,25 +2,34 @@
 #define WIN_PTHREADS_MUTEX_H
 
 #ifdef USE_MUTEX_CriticalSection
-#define COND_LOCKED(m)	(((_tid_u)m->cs.OwningThread).tid != 0)
-#define COND_OWNER(m)	(((_tid_u)m->cs.OwningThread).tid == GetCurrentThreadId())
+#define COND_LOCKED(m)	(((_tid_u)m->cs.rc.OwningThread).tid != 0)
+#define COND_OWNER(m)	(((_tid_u)m->cs.rc.OwningThread).tid == GetCurrentThreadId())
 #define COND_DEADLK(m)	COND_OWNER(m)
-#define GET_OWNER(m)	(((_tid_u)m->cs.OwningThread).tid)
+#define GET_OWNER(m)	(((_tid_u)m->cs.rc.OwningThread).tid)
+#define GET_HANDLE(m)	(m->cs.rc.LockSemaphore)
+#define GET_LOCKCNT(m)	(m->cs.rc.LockCount)
+#define GET_RCNT(m)		(m->cs.rc.RecursionCount)
 #define SET_OWNER(m)
 #define UNSET_OWNER(m)
+#define LOCK_UNDO(m)	_UndoWaitCriticalSection(&m->cs.rc)
 #else
 #define COND_LOCKED(m)	(m->owner != 0)
 #define COND_OWNER(m)	(m->owner == GetCurrentThreadId())
 #define COND_DEADLK(m)	COND_OWNER(m)
 #define GET_OWNER(m)	(m->owner)
-#define SET_OWNER(m)	{ if (m->type != PTHREAD_MUTEX_RECURSIVE) \
-							m->owner = GetCurrentThreadId(); \
+#define GET_HANDLE(m)	(m->h)
+#define GET_LOCKCNT(m)	(m->lockOwner)
+#define GET_RCNT(m)		(m->busy) /* not accurate! */
+#define SET_TID(m,tid)	{ if (m->type != PTHREAD_MUTEX_RECURSIVE) \
+							m->owner = tid; \
 						else \
-							if (1==InterlockedIncrement(&m->lockOwner))m->owner = GetCurrentThreadId(); }
+							if (1==InterlockedIncrement(&m->lockOwner))m->owner = tid; }
+#define SET_OWNER(m)	SET_TID(m,GetCurrentThreadId())
 #define UNSET_OWNER(m)	{ if (m->type != PTHREAD_MUTEX_RECURSIVE) \
 							m->owner = 0; \
 						else \
 							if (0==InterlockedDecrement(&m->lockOwner))m->owner = 0; }
+#define LOCK_UNDO(m)
 #endif
 #define COND_DEADLK_NR(m)	((m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(m))
 #define CHECK_DEADLK(m)		{ if (COND_DEADLK_NR(m)) return EDEADLK; }
@@ -39,6 +48,21 @@
 #define LIFE_MUTEX 0xBAB1F00D
 #define DEAD_MUTEX 0xDEADBEEF
 
+#if defined USE_MUTEX_CriticalSection
+typedef union _csu _csu;
+union _csu {
+	RTL_CRITICAL_SECTION rc;
+	CRITICAL_SECTION cs;
+};
+
+typedef union _tid_u _tid_u;
+union _tid_u {
+	HANDLE	h;
+	DWORD	tid;
+};
+
+#endif
+
 typedef struct mutex_t mutex_t;
 struct mutex_t
 {
@@ -50,37 +74,12 @@ struct mutex_t
 	DWORD owner;
     HANDLE h;
 #else /* USE_MUTEX_CriticalSection.  */
-    CRITICAL_SECTION cs;
+    csu cs;
 #endif
 	/* Prevent multiple (external) unlocks from messing up the semaphore signal state */
 	HANDLE semExt;
 	LONG lockExt;
 };
-
-#if defined USE_MUTEX_CriticalSection
-struct _pthread_crit_t
-{
-	void *debug;
-	LONG count;
-	LONG r_count;
-	HANDLE owner;
-	HANDLE sem;
-	ULONG_PTR spin;
-};
-
-typedef union _pthread_crit_u _pthread_crit_u;
-union _pthread_crit_u {
-	struct _pthread_crit_t *pc;
-	CRITICAL_SECTION *cs;
-};
-
-typedef union _tid_u _tid_u;
-union _tid_u {
-	HANDLE	h;
-	DWORD	tid;
-};
-
-#endif
 
 inline int mutex_static_init(volatile pthread_mutex_t *m);
 int _mutex_trylock(pthread_mutex_t *m);
