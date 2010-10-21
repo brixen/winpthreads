@@ -5,6 +5,7 @@
 #include "misc.h"
       
 static int scnt = 0;
+static LONG bscnt = 0;
 static int scntMax = 0;
 
 int pthread_spin_init(pthread_spinlock_t *l, int pshared)
@@ -85,6 +86,13 @@ int _spin_lite_getsc(int reset)
 	return r;
 }
 
+int _spin_lite_getbsc(int reset)
+{
+	int r = bscnt;
+	if (reset) bscnt = 0;
+	return r;
+}
+
 int _spin_lite_getscMax(int reset)
 {
 	int r = scntMax;
@@ -113,6 +121,7 @@ int _spin_lite_lock(spin_t *l)
 
 	_vol_spinlock v;
 	v.l = (LONG *)&l->l;
+	_spin_lite_lock_inc(bscnt);
     while (InterlockedExchange(v.lv, EBUSY))
     {
 		_spin_lite_lock_cnt(lscnt);
@@ -126,6 +135,7 @@ int _spin_lite_lock(spin_t *l)
             _ReadWriteBarrier();
         }
     }
+	_spin_lite_lock_dec(bscnt);
 	_spin_lite_lock_stat(lscnt);
     return 0;
 }
