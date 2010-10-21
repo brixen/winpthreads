@@ -31,8 +31,6 @@ static inline int cond_static_init(volatile pthread_cond_t *c)
 	return r;
 }
 
-
-#if defined  USE_COND_ConditionVariable
 int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
 {
 	cond_t *_c;
@@ -44,64 +42,38 @@ int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
 	if ( !(_c = (pthread_cond_t)malloc(sizeof(*_c))) ) {
 		return ENOMEM; 
 	}
-	
+
+#if defined  USE_COND_ConditionVariable
 	InitializeConditionVariable(&_c->CV);
 	_c->valid = LIFE_COND;
 	*c = _c;
-	return 0;
-}
 
-int pthread_cond_destroy(pthread_cond_t *c)
-{
-	cond_t *_c = (cond_t *)*c;
-
-	if (!c || !*c)	return EINVAL; 
-	if (*c == PTHREAD_COND_INITIALIZER) {
-		*c = NULL;
-		return 0;
-	}
-
-	pthread_cond_t *c_del = c;
-	*c = NULL; /* dereference first, free later */
-	_ReadWriteBarrier();
-    _c->valid  = DEAD_COND;
- 	/* There is indeed no DeleteConditionVariable */
- 	free(*c_del);
-    return 0;
-}
 #else /* USE_COND_SignalObjectAndWait USE_COND_Semaphore */
-int pthread_cond_init(pthread_cond_t *c, 
-                             pthread_condattr_t *a)
-{
-	cond_t *_c;
-
-	int r = 0;
-	(void) a;
-
-	if (!c)	return EINVAL; 
-	if ( !(_c = (pthread_cond_t)malloc(sizeof(*_c))) ) {
-		return ENOMEM; 
-	}
-
 	_c->waiters_count_ = 0;
     _c->was_broadcast_ = 0;
     _c->sema_ = CreateSemaphore (NULL,       /* no security */
         0,          /* initially 0 */
         0x7fffffff, /* max count */
         NULL);      /* unnamed  */
-    if (_c->sema_ == NULL) return EAGAIN;
-    InitializeCriticalSection(&_c->waiters_count_lock_);
-    _c->waiters_done_ = CreateEvent (NULL,  /* no security */
-        FALSE, /* auto-reset */
-        FALSE, /* non-signaled initially */
-        NULL); /* unnamed */
-    if (_c->waiters_done_ == NULL) { /*assume EAGAIN (but could be ENOMEM) */
-        DeleteCriticalSection(&_c->waiters_count_lock_);
-        CloseHandle(_c->sema_);
-		_c->valid  = DEAD_COND;
-		free(_c);
-        return EAGAIN;
-    } else {
+    if (_c->sema_ == NULL) {
+		r = EAGAIN;
+	} else {
+		InitializeCriticalSection(&_c->waiters_count_lock_);
+		_c->waiters_done_ = CreateEvent (NULL,  /* no security */
+			FALSE, /* auto-reset */
+			FALSE, /* non-signaled initially */
+			NULL); /* unnamed */
+		if (_c->waiters_done_ == NULL) { /*assume EAGAIN (but could be ENOMEM) */
+			DeleteCriticalSection(&_c->waiters_count_lock_);
+			CloseHandle(_c->sema_);
+			_c->valid  = DEAD_COND;
+			free(_c);
+			r = EAGAIN;
+		}
+	}
+
+#endif /*USE_COND_ConditionVariable */
+	if (!r) {
 		_c->valid = LIFE_COND;
 		*c = _c;
 	}
@@ -122,36 +94,54 @@ int pthread_cond_destroy(pthread_cond_t *c)
 	*c = NULL; /* dereference first, free later */
 	_ReadWriteBarrier();
     _c->valid  = DEAD_COND;
+
+#if defined  USE_COND_ConditionVariable
+ 	/* There is indeed no DeleteConditionVariable */
+
+#else /* USE_COND_SignalObjectAndWait USE_COND_Semaphore */
     CloseHandle(_c->waiters_done_);
     DeleteCriticalSection(&_c->waiters_count_lock_);
     CloseHandle(_c->sema_);
+
+#endif /*USE_COND_ConditionVariable */
  	free(*c_del);
     return 0;
 }
-#endif /*USE_COND_ConditionVariable */
 
-#if defined USE_COND_SignalObjectAndWait
 int pthread_cond_signal (pthread_cond_t *c)
 {
-    CHECK_COND(c);	
+	CHECK_COND(c);	
 	cond_t *_c = (cond_t *)*c;
 
-    EnterCriticalSection (&_c->waiters_count_lock_);
-    int have_waiters = _c->waiters_count_ > 0;
-    LeaveCriticalSection (&_c->waiters_count_lock_);
-
-    /* If there aren't any waiters, then this is a no-op.   */
-    if (have_waiters)
+#if defined USE_COND_SignalObjectAndWait
+ 	EnterCriticalSection (&_c->waiters_count_lock_);
+	/* If there aren't any waiters, then this is a no-op.   */
+    if (_c->waiters_count_ > 0) {
         ReleaseSemaphore (_c->sema_, 1, 0);
+	}
+	LeaveCriticalSection (&_c->waiters_count_lock_);
+
+#elif defined  USE_COND_ConditionVariable
+	WakeConditionVariable(&_c->CV);
+
+#else /*default USE_COND_Semaphore */
+ 	EnterCriticalSection (&_c->waiters_count_lock_);
+	/* If there aren't any waiters, then this is a no-op.   */
+    if (_c->waiters_count_ > 0) {
+        ReleaseSemaphore (_c->sema_, 1, 0);
+	}
+	LeaveCriticalSection (&_c->waiters_count_lock_);
+
+#endif /* USE_COND_SignalObjectAndWait */
     return 0;
 }
-
 
 int pthread_cond_broadcast (pthread_cond_t *c)
 {
     CHECK_COND(c);	
 	cond_t *_c = (cond_t *)*c;
 
+#if defined USE_COND_SignalObjectAndWait
     /* This is needed to ensure that <waiters_count_> and <was_broadcast_> are */
     /* consistent relative to each other. */
     EnterCriticalSection (&_c->waiters_count_lock_);
@@ -179,6 +169,19 @@ int pthread_cond_broadcast (pthread_cond_t *c)
         _c->was_broadcast_ = 0;
     } else
         LeaveCriticalSection (&_c->waiters_count_lock_);
+
+#elif defined  USE_COND_ConditionVariable
+	WakeAllConditionVariable(&_c->CV);
+
+#else /*default USE_COND_Semaphore */
+	EnterCriticalSection (&_c->waiters_count_lock_);
+    /* If there aren't any waiters, then this is a no-op.   */
+    if (_c->waiters_count_ > 0) {
+        ReleaseSemaphore (_c->sema_, _c->waiters_count_, NULL);
+	}
+	LeaveCriticalSection (&_c->waiters_count_lock_);
+
+#endif /* USE_COND_SignalObjectAndWait */
     return 0;
 }
 
@@ -187,11 +190,14 @@ int pthread_cond_wait (pthread_cond_t *c,
                               pthread_mutex_t *external_mutex)
 {
 	INIT_COND(c);
-    INIT_MUTEX(external_mutex);	
 	cond_t *_c = (cond_t *)*c;
+	int r = 0;
 	mutex_t *_m = (mutex_t *)*external_mutex;
-
 	pthread_testcancel();
+
+	if ((r=mutex_ref_ext(external_mutex)))return r;
+
+#if defined USE_COND_SignalObjectAndWait
      /* Avoid race conditions. */
     EnterCriticalSection (&_c->waiters_count_lock_);
     _c->waiters_count_++;
@@ -200,6 +206,7 @@ int pthread_cond_wait (pthread_cond_t *c,
     /* This call atomically releases the mutex and waits on the */
     /* semaphore until <pthread_cond_signal> or <pthread_cond_broadcast> */
     /* are called by another thread. */
+	UNSET_OWNER(_m);
     SignalObjectAndWait (_m->h, _c->sema_, INFINITE, FALSE);
 
     /* Reacquire lock to avoid race conditions. */
@@ -223,19 +230,53 @@ int pthread_cond_wait (pthread_cond_t *c,
         /* Always regain the external mutex since that's the guarantee we */
         /* give to our callers.  */
         WaitForSingleObject (_m->h, INFINITE);
+	SET_OWNER(_m);
 
-    return 0;
+#elif defined  USE_COND_ConditionVariable
+	SleepConditionVariableCS(&_c->CV, &_m->cs.cs, INFINITE);
+
+#else /*default USE_COND_Semaphore */
+	DWORD dwr;
+
+    pthread_mutex_unlock(external_mutex);
+	EnterCriticalSection (&_c->waiters_count_lock_);
+	_c->waiters_count_++;
+	LeaveCriticalSection (&_c->waiters_count_lock_);
+    dwr = WaitForSingleObject(_c->sema_, INFINITE);
+	switch (dwr) {
+	case WAIT_TIMEOUT:
+		r = ETIMEDOUT;
+		break;
+	case WAIT_ABANDONED:
+		r = EPERM;
+		break;
+	case WAIT_OBJECT_0:
+		r = 0;
+		break;
+	default:
+		/*We can only return EINVAL though it might not be posix compliant  */
+		r = EINVAL;
+	}
+	EnterCriticalSection (&_c->waiters_count_lock_);
+	_c->waiters_count_--;
+	LeaveCriticalSection (&_c->waiters_count_lock_);
+    pthread_mutex_lock(external_mutex);
+
+#endif /* USE_COND_SignalObjectAndWait */
+    return mutex_unref(external_mutex,r);
 }
 
 int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, struct timespec *t)
 {
-    int r = 0;
+	int r = 0;
 	DWORD dwr;
 	INIT_COND(c);
-    INIT_MUTEX(external_mutex);	
 	cond_t *_c = (cond_t *)*c;
 	mutex_t *_m = (mutex_t *)*external_mutex;
 
+	if ((r=mutex_ref_ext(external_mutex)))return r;
+
+#if defined USE_COND_SignalObjectAndWait
 	pthread_testcancel();
     /* Avoid race conditions. */
     EnterCriticalSection (&_c->waiters_count_lock_);
@@ -295,139 +336,20 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
         /* give to our callers.  */
         WaitForSingleObject (_m->h, INFINITE);
 
-    return r;
-}
 #elif defined  USE_COND_ConditionVariable
-int pthread_cond_signal(pthread_cond_t *c)
-{
-    CHECK_COND(c);	
-	cond_t *_c = (cond_t *)*c;
-
-	WakeConditionVariable(&_c->CV);
-	return 0;
-}
-
-int pthread_cond_broadcast(pthread_cond_t *c)
-{
-    CHECK_COND(c);	
-	cond_t *_c = (cond_t *)*c;
-
-	WakeAllConditionVariable(&_c->CV);
-	return 0;
-}
-
-int pthread_cond_wait(pthread_cond_t *c, pthread_mutex_t *m)
-{
-	INIT_COND(c);
-    INIT_MUTEX(m);	
-	cond_t *_c = (cond_t *)*c;
-	mutex_t *_m = (mutex_t *)*m;
-
-	pthread_testcancel();
-	SleepConditionVariableCS(&_c->CV, &_m->cs, INFINITE);
-	return 0;
-}
-
-int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m, struct timespec *t)
-{
 	unsigned long long tm = _pthread_rel_time_in_ms(t);
-	DWORD dwr;
-	INIT_COND(c);
-    INIT_MUTEX(m);	
-	cond_t *_c = (cond_t *)*c;
-	mutex_t *_m = (mutex_t *)*m;
 	
 	pthread_testcancel();
 	
 	dwr = _pthread_rel_time_in_ms(t);
 	printf("pthread_cond_timedwait wait %d ms\n", (int) dwr);
-	if (!SleepConditionVariableCS(&_c->CV,  &_m->cs, dwr)) return ETIMEDOUT;
+	if (!SleepConditionVariableCS(&_c->CV,  &_m->cs.cs, dwr)) return ETIMEDOUT;
 	
 	/* We can have a spurious wakeup after the timeout */
 	if (!_pthread_rel_time_in_ms(t)) return ETIMEDOUT;
-	
-	return 0;
-}
-
 
 #else /*default USE_COND_Semaphore */
-int pthread_cond_signal (pthread_cond_t *c)
-{
-    CHECK_COND(c);	
-	cond_t *_c = (cond_t *)*c;
-	EnterCriticalSection (&_c->waiters_count_lock_);
-
-	/* If there aren't any waiters, then this is a no-op.   */
-    if (_c->waiters_count_ > 0) {
-        ReleaseSemaphore (_c->sema_, 1, 0);
-	}
-	LeaveCriticalSection (&_c->waiters_count_lock_);
-
-    return 0;
-}
-
-int pthread_cond_broadcast (pthread_cond_t *c)
-{
-	CHECK_COND(c);	
-	cond_t *_c = (cond_t *)*c;
-
-	EnterCriticalSection (&_c->waiters_count_lock_);
-    /* If there aren't any waiters, then this is a no-op.   */
-    if (_c->waiters_count_ > 0) {
-        ReleaseSemaphore (_c->sema_, _c->waiters_count_, NULL);
-	}
-	LeaveCriticalSection (&_c->waiters_count_lock_);
-    return 0;
-}
-
-int pthread_cond_wait (pthread_cond_t *c, 
-                              pthread_mutex_t *external_mutex)
-{
-	INIT_COND(c);
-    INIT_MUTEX(external_mutex);	
-	cond_t *_c = (cond_t *)*c;
-
-	int r = 0;
-	DWORD dwr;
-
-	pthread_testcancel();
-
-    pthread_mutex_unlock(external_mutex);
-	EnterCriticalSection (&_c->waiters_count_lock_);
-	_c->waiters_count_++;
-	LeaveCriticalSection (&_c->waiters_count_lock_);
-    dwr = WaitForSingleObject(_c->sema_, INFINITE);
-	switch (dwr) {
-	case WAIT_TIMEOUT:
-		r = ETIMEDOUT;
-		break;
-	case WAIT_ABANDONED:
-		r = EPERM;
-		break;
-	case WAIT_OBJECT_0:
-		r = 0;
-		break;
-	default:
-		/*We can only return EINVAL though it might not be posix compliant  */
-		r = EINVAL;
-	}
-	EnterCriticalSection (&_c->waiters_count_lock_);
-	_c->waiters_count_--;
-	LeaveCriticalSection (&_c->waiters_count_lock_);
-    pthread_mutex_lock(external_mutex);
-
-    return r;
-}
-
-int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, struct timespec *t)
-{
-	INIT_COND(c);
-    INIT_MUTEX(external_mutex);	
-	cond_t *_c = (cond_t *)*c;
-
-	int r = 0;
 	int i=0;
-	DWORD dwr;
 
 	pthread_testcancel();
     pthread_mutex_unlock(external_mutex);
@@ -456,9 +378,9 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 	LeaveCriticalSection (&_c->waiters_count_lock_);
     pthread_mutex_lock(external_mutex);
 
-	return r;
-}
 #endif /* USE_COND_SignalObjectAndWait */
+    return mutex_unref(external_mutex,r);
+}
 
 int pthread_condattr_destroy(pthread_condattr_t *a)
 {
