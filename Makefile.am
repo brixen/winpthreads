@@ -7,3 +7,5 @@ libpthread_a_SOURCES = \
 
 include_HEADERS = include/pthread.h
 
+DISTCHECK_CONFIGURE_FLAGS = --host=$(host_triplet)
+

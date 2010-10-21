@@ -215,6 +215,7 @@ libpthread_a_SOURCES = \
   src/barrier.c  src/cond.c  src/misc.c  src/mutex.c  src/rwlock.c  src/spinlock.c  src/thread.c
 
 include_HEADERS = include/pthread.h
+DISTCHECK_CONFIGURE_FLAGS = --host=$(host_triplet)
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
