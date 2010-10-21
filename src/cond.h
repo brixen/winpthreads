@@ -35,21 +35,18 @@ WINBASEAPI BOOL WINAPI SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVar
 WINBASEAPI BOOL WINAPI SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVariable,PSRWLOCK SRWLock,DWORD dwMilliseconds,ULONG Flags);
 #endif /* CONDITION_VARIABLE_INIT */
 
-typedef struct cond_t cond_t;
-struct cond_t
-{
-    unsigned int valid;   
-    LONG waiters_count_; /* Number of waiting threads.  */
-    CRITICAL_SECTION waiters_count_lock_; /* Serialize access to <waiters_count_>.  */
-    CONDITION_VARIABLE CV;
-};
+#endif /* USE_COND_ConditionVariable */
 
-#else /* USE_COND_Semaphore default */
 typedef struct cond_t cond_t;
 struct cond_t
 {
     unsigned int valid;   
     LONG waiters_count_; /* Number of waiting threads.  */
+#if defined USE_COND_ConditionVariable
+	CRITICAL_SECTION waiters_count_lock_; /* Serialize access to <waiters_count_>.  */
+    CONDITION_VARIABLE CV;
+
+#else /* USE_COND_Semaphore USE_COND_SignalObjectAndWait */
     CRITICAL_SECTION waiters_count_lock_; /* Serialize access to <waiters_count_>.  */
     HANDLE sema_; /* Semaphore used to queue up threads waiting for the condition to
     		     become signaled.  */
@@ -58,8 +55,8 @@ struct cond_t
     			     semaphore.  */
     size_t was_broadcast_; /* Keeps track of whether we were broadcasting or signaling.  This
     			      allows us to optimize the code if we're just signaling.  */
-};
 
 #endif
+};
 
 #endif
