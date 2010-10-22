@@ -35,9 +35,12 @@ int pthread_spin_destroy(pthread_spinlock_t *l)
 	}
 	pthread_spinlock_t *l2 = l;
 	*l= NULL; /* dereference first, free later */
-	_ReadWriteBarrier();
     _l->valid  = DEAD_SPINLOCK;
-	pthread_spin_unlock(l2);
+
+   _ReadWriteBarrier();
+	UNSET_OWNER_SL(_l);
+    _l->l = 0;
+
 	free(*l2);
 	return 0;
  }

@@ -135,7 +135,7 @@ static inline int mutex_ref_destroy(volatile pthread_mutex_t *m, pthread_mutex_t
 	if (!m || !*m)  r = EINVAL;
 	else {
 		mutex_t *m_ = (mutex_t *)*m;
-		if (STATIC_INITIALIZER(*m)) { *m = NULL; r= -1; }
+		if (STATIC_INITIALIZER(*m)) *m = NULL;
 		else if (m_->valid != LIFE_MUTEX) r = EINVAL;
 		else if (m_->busy || COND_LOCKED(m_)) r = EBUSY;
 		else {
@@ -543,7 +543,7 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 	pthread_mutex_t mDestroy;
 	int r = mutex_ref_destroy(m,&mDestroy);
 	if(r) return r;
-	if(r<0) return 0; /* destroyed a (still) static initialized mutex */
+	if(!mDestroy) return 0; /* destroyed a (still) static initialized mutex */
 
 	/* now the mutex is invalid, and no one can touch it */
 	mutex_t *_m = (mutex_t *)mDestroy;
