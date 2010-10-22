@@ -9,6 +9,7 @@
 		|| ( ((rwlock_t *)(*l))->valid != (unsigned int)LIFE_RWLOCK ) ) \
         return EINVAL; }
 
+#ifdef USE_RWLOCK_SRWLock
 #ifndef SRWLOCK_INIT
 #define RTL_SRWLOCK_INIT {0}   
 #define SRWLOCK_INIT RTL_SRWLOCK_INIT
@@ -27,6 +28,7 @@ WINBASEAPI VOID WINAPI AcquireSRWLockShared(PSRWLOCK SRWLock);
 WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
 WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 #endif /* SRWLOCK_INIT */
+#endif /* USE_RWLOCK_SRWLock */
 
 typedef struct rwlock_t rwlock_t;
 struct rwlock_t {

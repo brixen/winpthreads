@@ -4,13 +4,13 @@
 #include "rwlock.h"
 #include "misc.h"
 
-#ifdef USE_RWLOCK_pthread_cond
+
 int pthread_rwlock_destroy (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
-    
     CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
+    int result=0;
+#ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -34,20 +34,27 @@ int pthread_rwlock_destroy (pthread_rwlock_t *rwlock_)
     UPD_RESULT(pthread_cond_destroy (&rwlock->cw), result);
 	free(*rwlock2);
 
+#else /* USE_RWLOCK_SRWLock */
+ 	pthread_rwlock_t *rwlock2 = rwlock_;
+	*rwlock_= NULL; /* dereference first, free later */
+	_ReadWriteBarrier();
+    rwlock->valid  = DEAD_RWLOCK;
+	free(*rwlock2);
+
+#endif
     return result;
 } 
 
 int pthread_rwlock_init (pthread_rwlock_t *rwlock_, const pthread_rwlockattr_t *attr)
 {
-    int result=0;
+	int result=0;
 	rwlock_t *rwlock;
 
 	if ( !(rwlock = (pthread_rwlock_t)malloc(sizeof(*rwlock))) ) {
 		return ENOMEM; 
 	}
-
 	memset(rwlock, 0,sizeof(*rwlock));
-
+#ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_init (&rwlock->m, NULL)) )
         return result;
 
@@ -62,27 +69,34 @@ int pthread_rwlock_init (pthread_rwlock_t *rwlock_, const pthread_rwlockattr_t *
         return result;
     }
 
+#else /* USE_RWLOCK_SRWLock */
+	InitializeSRWLock(&rwlock->l);
+	
+#endif
 	rwlock->valid = LIFE_RWLOCK;
 	*rwlock_ = rwlock;
-	return 0;
+	return result;
 } 
 
+#ifdef USE_RWLOCK_pthread_cond
 static void _pthread_once_rwlock_readcleanup (pthread_once_t *arg)
 {
-    rwlock_t   *rwlock = (rwlock_t *)arg;
+	rwlock_t   *rwlock = (rwlock_t *)arg;
 
     rwlock->readers_count--;
     pthread_mutex_unlock (&rwlock->m);
 }
+#endif
 
 int pthread_rwlock_rdlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
+	int result=0;
     
     CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 
 	pthread_testcancel();
+#ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -101,17 +115,23 @@ int pthread_rwlock_rdlock (pthread_rwlock_t *rwlock_)
         rwlock->readers++;
 
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
+
+#else /* USE_RWLOCK_SRWLock */
+	AcquireSRWLockShared(&rwlock->l);
+	
+#endif
     return result;
 }
 
 int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 {
-    int result=0;
-    
-    CHECK_RWLOCK(rwlock_);
+	int result=0;
+
+	CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-    
+
 	pthread_testcancel();
+#ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -130,16 +150,38 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         rwlock->readers++;
 
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
+
+#else /* USE_RWLOCK_SRWLock */
+	unsigned long long ct = _pthread_time_in_ms();
+	unsigned long long t = _pthread_time_in_ms_from_timespec(ts);
+
+	(void)rwlock; /* Awaiting fix below */
+	/* SRWLock are most sophisticated but still must use a busy-loop here. 
+	/* Must be inspiration from Tommy Cooper himself */
+	/* Unfortunately, NtWaitForKeyedEvent is needed to fix this eventually */
+	while (1)
+	{
+		/* Try to grab lock */
+		if (!pthread_rwlock_tryrdlock(rwlock_)) return 0;
+		
+		/* Get current time */
+		ct = _pthread_time_in_ms();
+		
+		/* Have we waited long enough? */
+		if (ct > t) return ETIMEDOUT;
+	}
+
+#endif
     return result;
 }
 
 int pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
+	int result=0;
     
     CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
+#ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -149,16 +191,39 @@ int pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlock_)
         rwlock->readers++;
  
 	UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
-    return result;
+ 
+#else /* USE_RWLOCK_SRWLock */
+	/* Get the current state of the lock */
+	void *state = *(void **) &rwlock->l;
+	
+	if (!state)
+	{
+		/* Unlocked to locked */
+		if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)0x11, NULL)) return 0;
+		return EBUSY;
+	}
+	
+	/* A single writer exists */
+	if (state == (void *) 1) return EBUSY;
+	
+	/* Multiple writers exist? */
+	if ((uintptr_t) state & 14) return EBUSY;
+	
+	if (InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *) ((uintptr_t)state + 16), state) == state) return 0;
+	
+	result = EBUSY;
+
+#endif
+	return result;
 } 
 
 int pthread_rwlock_trywrlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
+	int result=0;
     
     CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
+#ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -168,6 +233,14 @@ int pthread_rwlock_trywrlock (pthread_rwlock_t *rwlock_)
         rwlock->writers = 1;
 
 	UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
+
+#else /* USE_RWLOCK_SRWLock */
+	/* Try to grab lock if it has no users */
+	if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)1, NULL)) return 0;
+	
+	result = EBUSY;
+
+#endif
     return result;
 } 
 
@@ -177,7 +250,7 @@ int pthread_rwlock_unlock (pthread_rwlock_t *rwlock_)
     
     CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
+#ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -198,9 +271,26 @@ int pthread_rwlock_unlock (pthread_rwlock_t *rwlock_)
 	}
 
 	UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
+
+#else /* USE_RWLOCK_SRWLock */
+	void *state = *(void **) &rwlock->l;
+	
+	if (state == (void *) 1)
+	{
+		/* Known to be an exclusive lock */
+		ReleaseSRWLockExclusive(&rwlock->l);
+	}
+	else
+	{
+		/* A shared unlock will work */
+		ReleaseSRWLockShared(&rwlock->l);
+	}
+	
+#endif
     return result;
 } 
 
+#ifdef USE_RWLOCK_pthread_cond
 static void _pthread_once_rwlock_writecleanup (pthread_once_t *arg)
 {
     rwlock_t *rwlock = (rwlock_t *)arg;
@@ -208,15 +298,16 @@ static void _pthread_once_rwlock_writecleanup (pthread_once_t *arg)
     rwlock->writers_count--;
     pthread_mutex_unlock (&rwlock->m);
 }
+#endif
 
 int pthread_rwlock_wrlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
+	int result=0;
     
     CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
 	pthread_testcancel();
+#ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -234,17 +325,23 @@ int pthread_rwlock_wrlock (pthread_rwlock_t *rwlock_)
         rwlock->writers = 1;
 
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
+
+#else /* USE_RWLOCK_SRWLock */
+	AcquireSRWLockExclusive(&rwlock->l);
+
+#endif
     return result;
 }
 
 int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 {
-    int result=0;
+	int result=0;
     
     CHECK_RWLOCK(rwlock_);
 	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 
 	pthread_testcancel();
+#ifdef USE_RWLOCK_pthread_cond
 	if ( (result = pthread_mutex_lock (&rwlock->m)) )
         return result;
 
@@ -262,150 +359,13 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         rwlock->writers = 1;
 
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
-    return result;
-}
+
 #else /* USE_RWLOCK_SRWLock */
-int pthread_rwlock_init(pthread_rwlock_t *rwlock_, pthread_rwlockattr_t *a)
-{
-	rwlock_t *rwlock;
-
-	if ( !(rwlock = (pthread_rwlock_t)malloc(sizeof(*rwlock))) ) {
-		return ENOMEM; 
-	}
-
-	memset(rwlock, 0,sizeof(*rwlock));
-	InitializeSRWLock(&rwlock->l);
-	
-	rwlock->valid = LIFE_RWLOCK;
-	*rwlock_ = rwlock;
-	return 0;
-}
-
-int pthread_rwlock_destroy(pthread_rwlock_t *rwlock_)
-{
-    CHECK_RWLOCK(rwlock_);
-	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
- 	pthread_rwlock_t *rwlock2 = rwlock_;
-	*rwlock_= NULL; /* dereference first, free later */
-	_ReadWriteBarrier();
-    rwlock->valid  = DEAD_RWLOCK;
-	free(*rwlock2);
-	return 0;
-}
-
-int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock_)
-{
-    CHECK_RWLOCK(rwlock_);
-	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
-	pthread_testcancel();
-	AcquireSRWLockShared(&rwlock->l);
-	
-	return 0;
-}
-
-int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock_)
-{
-    CHECK_RWLOCK(rwlock_);
-	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
-	pthread_testcancel();
-	AcquireSRWLockExclusive(&rwlock->l);
-	
-	return 0;
-}
-
-int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock_)
-{
-    CHECK_RWLOCK(rwlock_);
-	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
-	/* Get the current state of the lock */
-	void *state = *(void **) &rwlock->l;
-	
-	if (!state)
-	{
-		/* Unlocked to locked */
-		if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)0x11, NULL)) return 0;
-		return EBUSY;
-	}
-	
-	/* A single writer exists */
-	if (state == (void *) 1) return EBUSY;
-	
-	/* Multiple writers exist? */
-	if ((uintptr_t) state & 14) return EBUSY;
-	
-	if (InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *) ((uintptr_t)state + 16), state) == state) return 0;
-	
-	return EBUSY;
-}
-
-int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock_)
-{
-    CHECK_RWLOCK(rwlock_);
-	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-
-	/* Try to grab lock if it has no users */
-	if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)1, NULL)) return 0;
-	
-	return EBUSY;
-}
-
-int pthread_rwlock_unlock(pthread_rwlock_t *rwlock_)
-{
-    CHECK_RWLOCK(rwlock_);
-	rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-	void *state = *(void **) &rwlock->l;
-	
-	if (state == (void *) 1)
-	{
-		/* Known to be an exclusive lock */
-		ReleaseSRWLockExclusive(&rwlock->l);
-	}
-	else
-	{
-		/* A shared unlock will work */
-		ReleaseSRWLockShared(&rwlock->l);
-	}
-	
-	return 0;
-}
-
-int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock_, struct timespec *ts)
-{
-    CHECK_RWLOCK(rwlock_);
-
 	unsigned long long ct = _pthread_time_in_ms();
 	unsigned long long t = _pthread_time_in_ms_from_timespec(ts);
 
-	pthread_testcancel();
-	
-	/* Use a busy-loop */
-	while (1)
-	{
-		/* Try to grab lock */
-		if (!pthread_rwlock_tryrdlock(rwlock_)) return 0;
-		
-		/* Get current time */
-		ct = _pthread_time_in_ms();
-		
-		/* Have we waited long enough? */
-		if (ct > t) return ETIMEDOUT;
-	}
-}
-
-int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock_, struct timespec *ts)
-{
-    CHECK_RWLOCK(rwlock_);
-
-	unsigned long long ct = _pthread_time_in_ms();
-	unsigned long long t = _pthread_time_in_ms_from_timespec(ts);
-
-	pthread_testcancel();
-	
-	/* Use a busy-loop */
+	(void)rwlock; /* Awaiting fix below */
+	/* Use a busy-loop here too. Ha ha. */
 	while (1)
 	{
 		/* Try to grab lock */
@@ -417,8 +377,10 @@ int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock_, struct timespec *ts)
 		/* Have we waited long enough? */
 		if (ct > t) return ETIMEDOUT;
 	}
-}
+
 #endif
+    return result;
+}
 
 int pthread_rwlockattr_destroy(pthread_rwlockattr_t *a)
 {
