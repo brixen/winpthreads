@@ -1,3 +1,5 @@
+AM_CFLAGS = -Wall
+
 lib_LIBRARIES = libpthread.a
 
 libpthread_a_CPPFLAGS = -I$(srcdir)/include
