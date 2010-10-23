@@ -192,10 +192,10 @@ int pthread_cond_wait (pthread_cond_t *c,
 	INIT_COND(c);
 	cond_t *_c = (cond_t *)*c;
 	int r = 0;
-	pthread_testcancel();
 
 	if ((r=mutex_ref_ext(external_mutex)))return r;
 
+	pthread_testcancel();
 #if defined USE_COND_SignalObjectAndWait
 	mutex_t *_m = (mutex_t *)*external_mutex;
 
@@ -278,10 +278,10 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 
 	if ((r=mutex_ref_ext(external_mutex)))return r;
 
+	pthread_testcancel();
 #if defined USE_COND_SignalObjectAndWait
 	mutex_t *_m = (mutex_t *)*external_mutex;
 
-	pthread_testcancel();
     /* Avoid race conditions. */
     EnterCriticalSection (&_c->waiters_count_lock_);
     _c->waiters_count_++;
@@ -343,10 +343,6 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 #elif defined  USE_COND_ConditionVariable
 	mutex_t *_m = (mutex_t *)*external_mutex;
 
-	unsigned long long tm = _pthread_rel_time_in_ms(t);
-	
-	pthread_testcancel();
-	
 	dwr = _pthread_rel_time_in_ms(t);
 	printf("pthread_cond_timedwait wait %d ms\n", (int) dwr);
 	if (!SleepConditionVariableCS(&_c->CV,  &_m->cs.cs, dwr)) return ETIMEDOUT;
@@ -355,7 +351,6 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 	if (!_pthread_rel_time_in_ms(t)) return ETIMEDOUT;
 
 #else /*default USE_COND_Semaphore */
-	pthread_testcancel();
     pthread_mutex_unlock(external_mutex);
 	EnterCriticalSection (&_c->waiters_count_lock_);
 	_c->waiters_count_++;

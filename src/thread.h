@@ -20,7 +20,7 @@ struct _pthread_v
     _pthread_cleanup *clean;
     HANDLE h;
     int cancelled;
-    unsigned p_state;
+    unsigned int p_state;
     unsigned int keymax;
     void **keyval;
     DWORD tid;
