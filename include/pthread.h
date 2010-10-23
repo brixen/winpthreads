@@ -65,18 +65,20 @@
 
 /* A few ways to implement pthread_cond:  */
 /* default.  */
-#define USE_COND_Semaphore 1
+//#define USE_COND_Semaphore 1
 /* USE_COND_SignalObjectAndWait has a flaw at timeout, hopefully fixed.  */
 //#define USE_COND_SignalObjectAndWait 1
 /* USE_COND_ConditionVariable is Windows Vista+, NOT cross-process.  */
-
-//#define USE_COND_ConditionVariable 1
+#define USE_COND_ConditionVariable 1
 
 /* A few ways to implement pthread_rwlock:  */
 /* default, use pthread_cond above.  */
 //#define USE_RWLOCK_pthread_cond 1
 /* USE_RWLOCK_SRWLock is Windows Vista+, NOT cross-process.  */
 #define USE_RWLOCK_SRWLock 1
+
+/* Experimental, use a synchronization object for timed waits:  */
+#define USE_RWLOCK_SRWLock_Sync 1
 
 /* Dependencies:  */
 #ifdef USE_SPINLOCK_EPERM /* need the owner */
@@ -249,6 +251,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
 int pthread_join(pthread_t t, void **res);
 int pthread_detach(pthread_t t);
 
+int pthread_rwlock_init (pthread_rwlock_t *rwlock_, const pthread_rwlockattr_t *attr);
 int pthread_rwlock_wrlock(pthread_rwlock_t *l);
 int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, struct timespec *ts);
 int pthread_rwlock_rdlock(pthread_rwlock_t *l);

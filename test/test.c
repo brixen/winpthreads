@@ -6,6 +6,7 @@
 #include <spinlock.h>
 #include <mutex.h>
 #include <cond.h>
+#include <rwlock.h>
 #include <misc.h>
 
 #define MAX_THREAD 1000
@@ -43,6 +44,7 @@ struct timespec *starttimer(struct timespec *ts, DWORD ms)
     ts->tv_sec  = tp.tv_sec;
     ts->tv_nsec = tp.tv_usec * 1000;
     ts->tv_sec += ms  / 1000;
+	printf("starttimer, %d s=%ld\n",ms, ts->tv_sec);
 	return ts;
 }
 
@@ -135,7 +137,7 @@ int spinlock_main(void)
 	return 0;
 }
 /*================================================================================*/
-#define MUTEX_NTHREADS              500
+#define MUTEX_NTHREADS              5
 #define MUTEX_LOOPCNT				0
 pthread_mutex_t         mutex;
 int                     sharedData=0;
@@ -233,7 +235,7 @@ void *mutex_threadfunc_raced(void *parm)
 		do {
 			mutex_print(&mutex,"A pthread_mutex_timedlock()");
 			//rc1 = pthread_mutex_lock(&mutex);
-			rc1 = pthread_mutex_timedlock(&mutex,starttimer(&ts, 4000000 ));
+			rc1 = pthread_mutex_timedlock(&mutex,starttimer(&ts, 4000 ));
 			mutex_print(&mutex,"B pthread_mutex_timedlock()");
 			//checkResults("pthread_mutex_lock() destroy\n", rc1);
 			if(rc1) {
@@ -911,9 +913,11 @@ void *rwlockTimed_rdlockThread(void *arg)
   struct timespec ts;
 
   printf("Entered thread, getting read lock with timeout\n");
+  starttimer(&ts, 30000 );
+  printf("Timer: %d\n", dwMilliSecs(_pthread_time_in_ms_from_timespec(&ts) - _pthread_time_in_ms()));
   Retry:
   rc = pthread_rwlock_timedrdlock(&rwlock, starttimer(&ts, 3000 ));
-  if (rc == EBUSY) {
+  if (rc != 0) {
     if (count >= 10) {
       printf("Retried too many times, failure!\n");
       exit(EXIT_FAILURE);
@@ -922,7 +926,7 @@ void *rwlockTimed_rdlockThread(void *arg)
     printf("RETRY...\n");
     goto Retry;
   }
-  checkResults("pthread_rwlock_rdlock() 1\n", rc);
+  checkResults("pthread_rwlock_timedrdlock() 1\n", rc);
 
   Sleep(2000);
 
@@ -954,7 +958,7 @@ int rwlockTimed_main(void)
   checkResults("pthread_create\n", rc);
 
   printf("Main, wait a bit holding the write lock\n");
-  Sleep(2000);
+  Sleep(20000);
 
   printf("Main, Now unlock the write lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
@@ -972,17 +976,25 @@ int rwlockTimed_main(void)
 
 
 /*================================================================================*/
+volatile static int rwdata=0;
 
 void *rwlock_rdlockThread(void *arg)
 {
-  int rc;
+  int rc,i;
+  struct timespec ts;
 
   printf("Entered thread, getting read lock\n");
-  rc = pthread_rwlock_rdlock(&rwlock);
+  //rc = pthread_rwlock_rdlock(&rwlock);
+  rc = pthread_rwlock_timedrdlock(&rwlock, starttimer(&ts, 30000 ));
   checkResults("pthread_rwlock_rdlock()\n", rc);
   printf("got the rwlock read lock\n");
 
-  Sleep(5);
+  for (i=0; i<=200; i++) {
+	Sleep(10);
+	if (rwdata) {
+		printf("RACE cond read %d\n", rwdata);
+	}
+  }
 
   printf("unlock the read lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
@@ -998,6 +1010,10 @@ void *rwlock_wrlockThread(void *arg)
   printf("Entered thread, getting write lock\n");
   rc = pthread_rwlock_wrlock(&rwlock);
   checkResults("pthread_rwlock_wrlock()\n", rc);
+
+  rwdata ++;
+  Sleep(5000);
+  rwdata --;
 
   printf("Got the rwlock write lock, now unlock\n");
   rc = pthread_rwlock_unlock(&rwlock);
@@ -1017,8 +1033,9 @@ int rwlock_main(void)
   rc = pthread_rwlock_init(&rwlock, NULL);
   checkResults("pthread_rwlock_init()\n", rc);
 
-  printf("Main, grab a read lock\n");
+  rwl_print(&rwlock, "Main, grab a read lock");
   rc = pthread_rwlock_rdlock(&rwlock);
+  rwl_print(&rwlock, "Main, grabbbed a read lock");
   checkResults("pthread_rwlock_rdlock()\n",rc);
 
   printf("Main, grab the same read lock again\n");

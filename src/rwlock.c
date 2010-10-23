@@ -1,9 +1,35 @@
 #include <windows.h>
+#include <stdio.h>
 #include "pthread.h"
 #include "thread.h"
 #include "rwlock.h"
 #include "misc.h"
 
+static int print_state = 1;
+void rwl_print_set(int state)
+{
+	print_state = state;
+}
+
+void rwl_print(volatile pthread_rwlock_t *rwl, char *txt)
+{
+	if (!print_state) return;
+	rwlock_t *r = (rwlock_t *)*rwl;
+	if (r == NULL) {
+		printf("RWL%p %d %s\n",*rwl,(int)GetCurrentThreadId(),txt);
+	} else {
+		printf("RWL%p %d V=%0X B=%d r=%ld w=%ld %s\n",
+			*rwl, 
+			(int)GetCurrentThreadId(), 
+			(int)r->valid, 
+			(int)r->busy,
+#ifdef USE_RWLOCK_pthread_cond
+			r->readers,r->writers,txt);
+#else
+			r->treaders_count,r->twriters_count,txt);
+#endif
+	}
+}
 
 int pthread_rwlock_destroy (pthread_rwlock_t *rwlock_)
 {
@@ -38,6 +64,8 @@ int pthread_rwlock_destroy (pthread_rwlock_t *rwlock_)
  	pthread_rwlock_t *rwlock2 = rwlock_;
 	*rwlock_= NULL; /* dereference first, free later */
 	_ReadWriteBarrier();
+	CloseHandle(rwlock->semTimedR);
+	CloseHandle(rwlock->semTimedW);
     rwlock->valid  = DEAD_RWLOCK;
 	free(*rwlock2);
 
@@ -55,22 +83,37 @@ int pthread_rwlock_init (pthread_rwlock_t *rwlock_, const pthread_rwlockattr_t *
 	}
 	memset(rwlock, 0,sizeof(*rwlock));
 #ifdef USE_RWLOCK_pthread_cond
-    if ( (result = pthread_mutex_init (&rwlock->m, NULL)) )
+    if ( (result = pthread_mutex_init (&rwlock->m, NULL)) ) {
+		free(rwlock);
         return result;
+	}
 
     if ( (result = pthread_cond_init (&rwlock->cr, NULL)) ) {
         pthread_mutex_destroy (&rwlock->m);
+		free(rwlock);
         return result;
     }
 
     if ( (result = pthread_cond_init (&rwlock->cw, NULL)) ) {
         pthread_cond_destroy (&rwlock->cr);
         pthread_mutex_destroy (&rwlock->m);
+		free(rwlock);
         return result;
     }
 
 #else /* USE_RWLOCK_SRWLock */
 	InitializeSRWLock(&rwlock->l);
+	rwlock->semTimedR = CreateSemaphore (NULL, 0, 1, NULL);
+	if (!rwlock->semTimedR) {
+		free(rwlock);
+		return ENOMEM;
+	}
+	rwlock->semTimedW = CreateSemaphore (NULL, 0, 1, NULL);
+	if (!rwlock->semTimedW) {
+		CloseHandle(rwlock->semTimedR);
+		free(rwlock);
+		return ENOMEM;
+	}
 	
 #endif
 	rwlock->valid = LIFE_RWLOCK;
@@ -97,8 +140,9 @@ int pthread_rwlock_rdlock (pthread_rwlock_t *rwlock_)
 
 	pthread_testcancel();
 #ifdef USE_RWLOCK_pthread_cond
-    if ( (result = pthread_mutex_lock (&rwlock->m)) )
+    if ( (result = pthread_mutex_lock (&rwlock->m)) ) {
         return result;
+	}
 
 	if (rwlock->writers) {
         rwlock->readers_count++;
@@ -155,9 +199,60 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 	unsigned long long ct = _pthread_time_in_ms();
 	unsigned long long t = _pthread_time_in_ms_from_timespec(ts);
 
+#ifdef USE_RWLOCK_SRWLock_Sync
+/* fix the busy-wait problem with 2 semaphores */
+	uintptr_t s;
+
+	if (!pthread_rwlock_tryrdlock(rwlock_)) {
+		return 0;
+	}
+	InterlockedIncrement(&rwlock->treaders_count);
+	while (1)
+	{
+		/* Wait for the semaphore: */
+		printf("%ld: pthread_rwlock_timedrdlock wait:  %ld ms\n",GetCurrentThreadId(), dwMilliSecs(t - ct));
+		switch (WaitForSingleObject(rwlock->semTimedR, dwMilliSecs(t - ct))) {
+		case WAIT_OBJECT_0:
+			/* Try to grab lock && check if it is a rdlock: */
+			printf("%ld: pthread_rwlock_timedrdlock Try to grab lock\n",GetCurrentThreadId());
+			if (!pthread_rwlock_tryrdlock(rwlock_)) {
+				printf("%ld: pthread_rwlock_timedrdlock grabbed lock\n",GetCurrentThreadId());
+				InterlockedDecrement(&rwlock->treaders_count);
+				return 0;
+			}
+			printf("%ld: pthread_rwlock_timedrdlock Try to grab lock failed\n",GetCurrentThreadId());
+
+			/* Not a rdlock for us, redo the signal and wait again. */
+			s = (uintptr_t)(*(void **) &rwlock->l);
+			if (!(s&(RTL_SRWLOCK_OWNED|RTL_SRWLOCK_CONTENDED))) {
+				printf("%ld: pthread_rwlock_timedrdlock re-release\n",GetCurrentThreadId());
+				ReleaseSemaphore(rwlock->semTimedR, 1, NULL);
+				Sleep(10);
+			} 
+			/* else have to wait on an unlock anyway */
+			break;
+
+		case WAIT_TIMEOUT:
+			printf("%ld: pthread_rwlock_timedrdlock WAIT_TIMEOUT\n",GetCurrentThreadId());
+			InterlockedDecrement(&rwlock->treaders_count);
+			break;
+
+		default:
+			printf("%ld: pthread_rwlock_timedrdlock GLE=%ld\n",GetCurrentThreadId(), GetLastError());
+			InterlockedDecrement(&rwlock->treaders_count);
+			return EINVAL;
+		}
+
+		/* Get current time */
+		ct = _pthread_time_in_ms();
+		
+		/* Have we waited long enough? */
+		if (ct > t) return ETIMEDOUT;
+	}
+
+#else /* Busy wait solution */
 	(void)rwlock; /* Awaiting fix below */
-	/* SRWLock are most sophisticated but still must use a busy-loop here. 
-	/* Must be inspiration from Tommy Cooper himself */
+	/* SRWLock are most sophisticated but still must use a busy-loop here.*/ 
 	/* Unfortunately, NtWaitForKeyedEvent is needed to fix this eventually */
 	while (1)
 	{
@@ -171,7 +266,8 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 		if (ct > t) return ETIMEDOUT;
 	}
 
-#endif
+#endif /* Busy wait solution */
+#endif /* USE_RWLOCK_SRWLock */
     return result;
 }
 
@@ -199,15 +295,15 @@ int pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlock_)
 	if (!state)
 	{
 		/* Unlocked to locked */
-		if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)0x11, NULL)) return 0;
+		if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)(16+RTL_SRWLOCK_OWNED), NULL)) return 0;
 		return EBUSY;
 	}
 	
 	/* A single writer exists */
-	if (state == (void *) 1) return EBUSY;
+	if (state == (void *) RTL_SRWLOCK_OWNED) return EBUSY;
 	
 	/* Multiple writers exist? */
-	if ((uintptr_t) state & 14) return EBUSY;
+	if ((uintptr_t) state & RTL_SRWLOCK_LOCKED) return EBUSY;
 	
 	if (InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *) ((uintptr_t)state + 16), state) == state) return 0;
 	
@@ -236,7 +332,7 @@ int pthread_rwlock_trywrlock (pthread_rwlock_t *rwlock_)
 
 #else /* USE_RWLOCK_SRWLock */
 	/* Try to grab lock if it has no users */
-	if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)1, NULL)) return 0;
+	if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)RTL_SRWLOCK_OWNED, NULL)) return 0;
 	
 	result = EBUSY;
 
@@ -274,18 +370,47 @@ int pthread_rwlock_unlock (pthread_rwlock_t *rwlock_)
 
 #else /* USE_RWLOCK_SRWLock */
 	void *state = *(void **) &rwlock->l;
+	uintptr_t s = (uintptr_t)state;
+
+	/* FIXME: We should check ownership here because the ReleaseSRW* functions
+	 * would throw an exception instead of return an error.
+	 * Or we need SEH.
+	 */
 	
-	if (state == (void *) 1)
-	{
+	if (s == RTL_SRWLOCK_OWNED){
 		/* Known to be an exclusive lock */
 		ReleaseSRWLockExclusive(&rwlock->l);
-	}
-	else
-	{
+#ifdef USE_RWLOCK_SRWLock_Sync
+		if (rwlock->treaders_count) {
+			/* favour readers */
+			ReleaseSemaphore(rwlock->semTimedR, rwlock->treaders_count, NULL);
+		} else {
+			ReleaseSemaphore(rwlock->semTimedW, rwlock->twriters_count, NULL);
+		}
+#endif
+	} else {
 		/* A shared unlock will work */
 		ReleaseSRWLockShared(&rwlock->l);
+#ifdef USE_RWLOCK_SRWLock_Sync
+		if ( (s>16) && !((s-RTL_SRWLOCK_OWNED)%16) ) {
+			/* unlock by shared reader: */
+			if (s == 16+RTL_SRWLOCK_OWNED) {
+				/* the last one: */
+				if (rwlock->twriters_count) {
+					/* favour writers this time */
+					ReleaseSemaphore(rwlock->semTimedW, rwlock->twriters_count, NULL);
+				} else {
+					ReleaseSemaphore(rwlock->semTimedR, rwlock->treaders_count, NULL);
+				}
+			}
+		} else {
+			/* anything else (contention), wake readers only (contenders are never timed)
+			 * Writers would have to wait anyway for one of the contenders.
+			 */
+			ReleaseSemaphore(rwlock->semTimedR, rwlock->treaders_count, NULL);
+		}
+#endif /* USE_RWLOCK_SRWLock_Sync */	
 	}
-	
 #endif
     return result;
 } 
@@ -364,6 +489,54 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 	unsigned long long ct = _pthread_time_in_ms();
 	unsigned long long t = _pthread_time_in_ms_from_timespec(ts);
 
+#ifdef USE_RWLOCK_SRWLock_Sync
+	uintptr_t s;
+
+	if (!pthread_rwlock_trywrlock(rwlock_)) {
+		return 0;
+	}
+	InterlockedIncrement(&rwlock->twriters_count);
+	while (1)
+	{
+		/* Wait for the semaphore: */
+		switch (WaitForSingleObject(rwlock->semTimedW, dwMilliSecs(t - ct))) {
+		case WAIT_OBJECT_0:
+			/* Try to grab lock && check if it is a wrlock: */
+			printf("%ld: pthread_rwlock_timedwrlock Try to grab lock\n",GetCurrentThreadId());
+			if (!pthread_rwlock_trywrlock(rwlock_)) {
+				InterlockedDecrement(&rwlock->twriters_count);
+				return 0;
+			}
+			printf("%ld: pthread_rwlock_timedwrlock Try to grab lock failed\n",GetCurrentThreadId());
+
+			/* Not a wrlock for us, redo the signal and wait again. */
+			s = (uintptr_t)(*(void **) &rwlock->l);
+			if (!(s&(RTL_SRWLOCK_OWNED|RTL_SRWLOCK_CONTENDED))) {
+				printf("%ld: pthread_rwlock_timedwrlock re-release\n",GetCurrentThreadId());
+				ReleaseSemaphore(rwlock->semTimedW, 1, NULL);
+				Sleep(10);
+			}
+			break;
+
+		case WAIT_TIMEOUT:
+			printf("%ld: pthread_rwlock_timedwrlock WAIT_TIMEOUT\n",GetCurrentThreadId());
+			InterlockedDecrement(&rwlock->twriters_count);
+			break;
+
+		default:
+			printf("%ld: pthread_rwlock_timedwrlock GLE=%ld\n",GetCurrentThreadId(), GetLastError());
+			InterlockedDecrement(&rwlock->twriters_count);
+			return EINVAL;
+		}
+
+		/* Get current time */
+		ct = _pthread_time_in_ms();
+		
+		/* Have we waited long enough? */
+		if (ct > t) return ETIMEDOUT;
+	}
+
+#else /* Busy wait solution */
 	(void)rwlock; /* Awaiting fix below */
 	/* Use a busy-loop here too. Ha ha. */
 	while (1)
@@ -378,7 +551,8 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 		if (ct > t) return ETIMEDOUT;
 	}
 
-#endif
+#endif /* Busy wait solution */
+#endif /* USE_RWLOCK_SRWLock */
     return result;
 }
 
