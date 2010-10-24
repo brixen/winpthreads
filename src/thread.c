@@ -296,18 +296,12 @@ pthread_t pthread_self(void)
     /* Main thread? */
     if (!t)
     {
-        t = (pthread_t)malloc(sizeof(struct _pthread_v));
+        t = (pthread_t)calloc(1,sizeof(struct _pthread_v));
 
         /* If cannot initialize main thread, then the only thing we can do is abort */
         if (!t) abort();
 
-        t->ret_arg = NULL;
-        t->func = NULL;
-        t->clean = NULL;
-        t->cancelled = 0;
         t->p_state = PTHREAD_DEFAULT_ATTR;
-        t->keymax = 0;
-        t->keyval = NULL;
         t->h = GetCurrentThread();
         t->tid = GetCurrentThreadId();
 
@@ -572,7 +566,7 @@ int pthread_create_wrapper(void *args)
 
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
 {
-	struct _pthread_v *tv = (struct _pthread_v *)malloc(sizeof(struct _pthread_v));
+	struct _pthread_v *tv = (struct _pthread_v *)calloc(1,sizeof(struct _pthread_v));
     size_t ssize = 0;
 
     CHECK_PTR(th);
@@ -584,14 +578,9 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     /* Save data in pthread_t */
     tv->ret_arg = arg;
     tv->func = func;
-    tv->clean = NULL;
-    tv->cancelled = 0;
     tv->p_state = PTHREAD_DEFAULT_ATTR;
-    tv->keymax = 0;
-    tv->keyval = NULL;
     tv->h = (HANDLE) -1;
-    tv->tid = 0;
-
+ 
     if (attr)
     {
         tv->p_state = attr->p_state;

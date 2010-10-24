@@ -911,19 +911,18 @@ void *rwlockTimed_rdlockThread(void *arg)
   int             rc;
   int             count=0;
   struct timespec ts;
+ unsigned long long ct1 = _pthread_time_in_ms();
 
   printf("Entered thread, getting read lock with timeout\n");
-  starttimer(&ts, 30000 );
-  printf("Timer: %d\n", dwMilliSecs(_pthread_time_in_ms_from_timespec(&ts) - _pthread_time_in_ms()));
   Retry:
-  rc = pthread_rwlock_timedrdlock(&rwlock, starttimer(&ts, 3000 ));
+  rc = pthread_rwlock_timedrdlock(&rwlock, starttimer(&ts, 5000 ));
   if (rc != 0) {
     if (count >= 10) {
       printf("Retried too many times, failure!\n");
       exit(EXIT_FAILURE);
     }
     ++count;
-    printf("RETRY...\n");
+    printf("RETRY...rc=%d\n",rc);
     goto Retry;
   }
   checkResults("pthread_rwlock_timedrdlock() 1\n", rc);
@@ -933,8 +932,9 @@ void *rwlockTimed_rdlockThread(void *arg)
   printf("unlock the read lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
   checkResults("pthread_rwlock_unlock()\n", rc);
+ unsigned long long ct2 = _pthread_time_in_ms();
 
-  printf("Secondary thread complete\n");
+  printf("Secondary thread complete, waited total: %ld\n",ct2-ct1);
   return NULL;
 }
 
@@ -958,7 +958,7 @@ int rwlockTimed_main(void)
   checkResults("pthread_create\n", rc);
 
   printf("Main, wait a bit holding the write lock\n");
-  Sleep(20000);
+  Sleep(18000);
 
   printf("Main, Now unlock the write lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
@@ -1038,23 +1038,27 @@ int rwlock_main(void)
   rwl_print(&rwlock, "Main, grabbbed a read lock");
   checkResults("pthread_rwlock_rdlock()\n",rc);
 
+/*
   printf("Main, grab the same read lock again\n");
   rc = pthread_rwlock_rdlock(&rwlock);
   checkResults("pthread_rwlock_rdlock() second\n", rc);
+*/
 
   printf("Main, create the read lock thread\n");
   rc = pthread_create(&thread, NULL, rwlock_rdlockThread, NULL);
   checkResults("pthread_create\n", rc);
 
+/*
   printf("Main - unlock the first read lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
   checkResults("pthread_rwlock_unlock()\n", rc);
+*/
 
   printf("Main, create the write lock thread\n");
   rc = pthread_create(&thread1, NULL, rwlock_wrlockThread, NULL);
   checkResults("pthread_create\n", rc);
 
-  printf("Main - unlock the second read lock\n");
+  printf("Main - unlock the read lock\n");
   rc = pthread_rwlock_unlock(&rwlock);
   checkResults("pthread_rwlock_unlock()\n", rc);
 
@@ -1069,6 +1073,7 @@ int rwlock_main(void)
   checkResults("pthread_rwlock_destroy()\n", rc);
 
   printf("Main completed\n");
+  rwl_print(&rwlock, "Main completed");
   return 0;
 }
 

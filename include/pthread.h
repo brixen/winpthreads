@@ -49,6 +49,8 @@
 //#define WINPTHREAD_DBG 1
 
 /* Compatibility stuff: */
+#define RWLS_PER_THREAD						8
+
 /* contention analysis, etc: */
 #define USE_SPINLOCK_DBG					1
 /* deadlock detection is optional for spinlocks */

@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <setjmp.h>
+#include "rwlock.h"
 
 /* private non-public types.  */
 typedef struct _pthread_cleanup _pthread_cleanup;
@@ -24,6 +25,8 @@ struct _pthread_v
     unsigned int keymax;
     void **keyval;
     DWORD tid;
+	int rwlc;
+	pthread_rwlock_t rwlq[RWLS_PER_THREAD];
 
     jmp_buf jb;
 };
