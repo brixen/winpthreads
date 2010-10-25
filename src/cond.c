@@ -192,7 +192,7 @@ int pthread_cond_wait (pthread_cond_t *c,
 
     cond_t *_c = (cond_t *)*c;
 
-    if ((r=mutex_ref_ext(external_mutex)))return cond_unref_wait(c,r);
+    if ((r=mutex_ref_ext(external_mutex)))return cond_unref(c,r);
 
     pthread_testcancel();
 #if defined USE_COND_SignalObjectAndWait
@@ -265,7 +265,7 @@ int pthread_cond_wait (pthread_cond_t *c,
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
 #endif /* USE_COND_SignalObjectAndWait */
-    return cond_unref_wait(c,mutex_unref(external_mutex,r));
+    return cond_unref(c,mutex_unref(external_mutex,r));
 }
 
 int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, struct timespec *t)
@@ -276,7 +276,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 
     cond_t *_c = (cond_t *)*c;
 
-    if ((r=mutex_ref_ext(external_mutex)))return cond_unref_wait(c,r);
+    if ((r=mutex_ref_ext(external_mutex)))return cond_unref(c,r);
 
     pthread_testcancel();
 #if defined USE_COND_SignalObjectAndWait
@@ -380,7 +380,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
 #endif /* USE_COND_SignalObjectAndWait */
-    return cond_unref_wait(c,mutex_unref(external_mutex,r));
+    return cond_unref(c,mutex_unref(external_mutex,r));
 }
 
 int pthread_condattr_destroy(pthread_condattr_t *a)

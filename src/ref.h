@@ -18,7 +18,6 @@ inline int rwl_ref_destroy(volatile pthread_rwlock_t *rwl, pthread_rwlock_t *rDe
 inline int rwl_ref_init(volatile pthread_rwlock_t *rwl );
 
 inline int cond_unref(volatile pthread_cond_t *cond, int res);
-inline int cond_unref_wait(volatile pthread_cond_t *cond, int res);
 inline int cond_ref(volatile pthread_cond_t *cond);
 inline int cond_ref_wait(volatile pthread_cond_t *cond, pthread_mutex_t *m);
 inline int cond_ref_destroy(volatile pthread_cond_t *cond, pthread_cond_t *cDestroy );

@@ -215,14 +215,6 @@ inline int rwl_ref_init(volatile pthread_rwlock_t *rwl )
 inline int cond_unref(volatile pthread_cond_t *cond, int res)
 {
     _spin_lite_lock(&cond_global);
-     ((cond_t *)*cond)->busy--;
-    _spin_lite_unlock(&cond_global);
-    return res;
-}
-
-inline int cond_unref_wait(volatile pthread_cond_t *cond, int res)
-{
-    _spin_lite_lock(&cond_global);
     cond_t *c_ = (cond_t *)*cond;
 
     c_->busy--;
