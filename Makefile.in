@@ -84,6 +84,7 @@ am_libpthread_a_OBJECTS = src/libpthread_a-barrier.$(OBJEXT) \
 	src/libpthread_a-mutex.$(OBJEXT) \
 	src/libpthread_a-rwlock.$(OBJEXT) \
 	src/libpthread_a-spinlock.$(OBJEXT) \
+	src/libpthread_a-ref.$(OBJEXT) \
 	src/libpthread_a-thread.$(OBJEXT)
 libpthread_a_OBJECTS = $(am_libpthread_a_OBJECTS)
 DEFAULT_INCLUDES = -I.@am__isrc@
@@ -211,8 +212,8 @@ top_srcdir = @top_srcdir@
 lib_LIBRARIES = libpthread.a
 libpthread_a_CPPFLAGS = -I$(srcdir)/include
 libpthread_a_SOURCES = \
-  src/barrier.h  src/cond.h  src/misc.h  src/mutex.h  src/rwlock.h  src/spinlock.h  src/thread.h \
-  src/barrier.c  src/cond.c  src/misc.c  src/mutex.c  src/rwlock.c  src/spinlock.c  src/thread.c
+  src/barrier.h  src/cond.h  src/misc.h  src/mutex.h  src/rwlock.h  src/spinlock.h  src/ref.h  src/thread.h \
+  src/barrier.c  src/cond.c  src/misc.c  src/mutex.c  src/rwlock.c  src/spinlock.c  src/ref.c  src/thread.c
 
 include_HEADERS = include/pthread.h
 DISTCHECK_CONFIGURE_FLAGS = --host=$(host_triplet)
@@ -322,6 +323,8 @@ src/libpthread_a-rwlock.$(OBJEXT): src/$(am__dirstamp) \
 	src/$(DEPDIR)/$(am__dirstamp)
 src/libpthread_a-spinlock.$(OBJEXT): src/$(am__dirstamp) \
 	src/$(DEPDIR)/$(am__dirstamp)
+src/libpthread_a-ref.$(OBJEXT): src/$(am__dirstamp) \
+	src/$(DEPDIR)/$(am__dirstamp)
 src/libpthread_a-thread.$(OBJEXT): src/$(am__dirstamp) \
 	src/$(DEPDIR)/$(am__dirstamp)
 libpthread.a: $(libpthread_a_OBJECTS) $(libpthread_a_DEPENDENCIES) 
@@ -337,6 +340,7 @@ mostlyclean-compile:
 	-rm -f src/libpthread_a-mutex.$(OBJEXT)
 	-rm -f src/libpthread_a-rwlock.$(OBJEXT)
 	-rm -f src/libpthread_a-spinlock.$(OBJEXT)
+	-rm -f src/libpthread_a-ref.$(OBJEXT)
 	-rm -f src/libpthread_a-thread.$(OBJEXT)
 
 distclean-compile:
@@ -348,6 +352,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/libpthread_a-mutex.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/libpthread_a-rwlock.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/libpthread_a-spinlock.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/libpthread_a-ref.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/libpthread_a-thread.Po@am__quote@
 
 .c.o:
@@ -449,6 +454,20 @@ src/libpthread_a-spinlock.obj: src/spinlock.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='src/spinlock.c' object='src/libpthread_a-spinlock.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libpthread_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o src/libpthread_a-spinlock.obj `if test -f 'src/spinlock.c'; then $(CYGPATH_W) 'src/spinlock.c'; else $(CYGPATH_W) '$(srcdir)/src/spinlock.c'; fi`
+
+src/libpthread_a-ref.o: src/ref.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libpthread_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT src/libpthread_a-ref.o -MD -MP -MF src/$(DEPDIR)/libpthread_a-ref.Tpo -c -o src/libpthread_a-ref.o `test -f 'src/ref.c' || echo '$(srcdir)/'`src/ref.c
+@am__fastdepCC_TRUE@	$(am__mv) src/$(DEPDIR)/libpthread_a-ref.Tpo src/$(DEPDIR)/libpthread_a-ref.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='src/ref.c' object='src/libpthread_a-ref.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libpthread_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o src/libpthread_a-ref.o `test -f 'src/ref.c' || echo '$(srcdir)/'`src/ref.c
+
+src/libpthread_a-ref.obj: src/ref.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libpthread_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT src/libpthread_a-ref.obj -MD -MP -MF src/$(DEPDIR)/libpthread_a-ref.Tpo -c -o src/libpthread_a-ref.obj `if test -f 'src/ref.c'; then $(CYGPATH_W) 'src/ref.c'; else $(CYGPATH_W) '$(srcdir)/src/ref.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) src/$(DEPDIR)/libpthread_a-ref.Tpo src/$(DEPDIR)/libpthread_a-ref.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='src/ref.c' object='src/libpthread_a-ref.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libpthread_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o src/libpthread_a-ref.obj `if test -f 'src/ref.c'; then $(CYGPATH_W) 'src/ref.c'; else $(CYGPATH_W) '$(srcdir)/src/ref.c'; fi`
 
 src/libpthread_a-thread.o: src/thread.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libpthread_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT src/libpthread_a-thread.o -MD -MP -MF src/$(DEPDIR)/libpthread_a-thread.Tpo -c -o src/libpthread_a-thread.o `test -f 'src/thread.c' || echo '$(srcdir)/'`src/thread.c

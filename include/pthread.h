@@ -220,6 +220,7 @@ typedef void	*pthread_barrier_t;
 #define PTHREAD_NORMAL_MUTEX_INITIALIZER		(pthread_mutex_t *)GENERIC_NORMAL_INITIALIZER
 #define PTHREAD_DEFAULT_MUTEX_INITIALIZER		PTHREAD_NORMAL_MUTEX_INITIALIZER
 #define PTHREAD_COND_INITIALIZER				(pthread_cond_t *)GENERIC_INITIALIZER
+#define PTHREAD_RWLOCK_INITIALIZER				(pthread_rwlock_t *)GENERIC_INITIALIZER
 
 typedef struct pthread_attr_t pthread_attr_t;
 struct pthread_attr_t

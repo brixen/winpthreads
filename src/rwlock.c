@@ -2,11 +2,10 @@
 #include <stdio.h>
 #include "pthread.h"
 #include "thread.h"
+#include "ref.h"
 #include "rwlock.h"
 #include "spinlock.h"
 #include "misc.h"
-
-static spin_t rwl_global = {0,LIFE_SPINLOCK,0};
 
 static int print_state = 1;
 void rwl_print_set(int state)
@@ -21,23 +20,41 @@ void rwl_print(volatile pthread_rwlock_t *rwl, char *txt)
     if (r == NULL) {
         printf("RWL%p %d %s\n",*rwl,(int)GetCurrentThreadId(),txt);
     } else {
-        printf("RWL%p %d V=%0X B=%d r=%ld w=%ld %s\n",
+        printf("RWL%p %d V=%0X B=%d r=%ld w=%ld L=%p %s\n",
             *rwl, 
             (int)GetCurrentThreadId(), 
             (int)r->valid, 
             (int)r->busy,
 #ifdef USE_RWLOCK_pthread_cond
-            r->readers,r->writers,txt);
+            (LONG)r->readers,(LONG)r->writers,NULL,txt);
 #else
-            r->treaders_count,r->twriters_count,txt);
+            r->treaders_count,r->twriters_count,r->l.Ptr,txt);
 #endif
     }
 }
 
-#define RWL_SET	0x01
-#define RWL_TRY	0x02
+inline int rwlock_static_init(volatile pthread_rwlock_t *r)
+{
+    pthread_rwlock_t r_tmp=NULL, *r_replaced;
+    int res = pthread_rwlock_init(&r_tmp, NULL);
 
-static inline int rwl_set_owner(pthread_rwlock_t *rwl, int flags)
+    if (!res) {
+        r_replaced = (pthread_rwlock_t *)InterlockedCompareExchangePointer(
+            (PVOID *)r, 
+            r_tmp,
+            PTHREAD_RWLOCK_INITIALIZER);
+        if (r_replaced != (pthread_rwlock_t *)PTHREAD_RWLOCK_INITIALIZER) {
+            printf("rwlock_static_init race detected: rwlock %p\n",  r_replaced);
+            /* someone crept in between: */
+            pthread_rwlock_destroy(&r_tmp);
+            /* it could even be destroyed: */
+            if (!r_replaced) res = EINVAL;
+        }
+    }
+    return res;
+}
+
+inline int rwl_check_owner(pthread_rwlock_t *rwl, int flags)
 {
     int r=0;
 
@@ -53,7 +70,7 @@ static inline int rwl_set_owner(pthread_rwlock_t *rwl, int flags)
     return r;
 }
 
-static inline int rwl_unset_owner(pthread_rwlock_t *rwl, int flags)
+inline int rwl_unset_owner(pthread_rwlock_t *rwl, int flags)
 {
     int r=0;
 
@@ -71,73 +88,65 @@ static inline int rwl_unset_owner(pthread_rwlock_t *rwl, int flags)
 
 int pthread_rwlock_destroy (pthread_rwlock_t *rwlock_)
 {
-    CHECK_RWLOCK(rwlock_);
-    rwlock_t *rwlock = (rwlock_t *)*rwlock_;
-    int result=0;
+    pthread_rwlock_t rDestroy;
+    int r = rwl_ref_destroy(rwlock_,&rDestroy);
+    if(r) return r;
+    if(!rDestroy) return 0; /* destroyed a (still) static initialized rwl */
+
+    rwlock_t *rwlock = (rwlock_t *)rDestroy;
 #ifdef USE_RWLOCK_pthread_cond
-    if ( (result = pthread_mutex_lock (&rwlock->m)) )
-        return result;
-
-    if (rwlock->readers > 0 || rwlock->writers) {
+    pthread_mutex_lock (&rwlock->m);
+ 
+    if (rwlock->readers_count != 0 || rwlock->writers_count != 0) {
+        /* Could this happen? */
+        *rwlock_ = rDestroy;
         pthread_mutex_unlock (&rwlock->m);
-        return EBUSY;
+        return rwl_unref(rwlock_,EBUSY);
     }
 
-     if (rwlock->readers_count != 0 || rwlock->writers_count != 0) {
-        pthread_mutex_unlock (&rwlock->m);
-        return EBUSY;
-    }
-
-    pthread_rwlock_t *rwlock2 = rwlock_;
-    *rwlock_= NULL; /* dereference first, free later */
-    _ReadWriteBarrier();
-    rwlock->valid  = DEAD_RWLOCK;
-
-    UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
-    UPD_RESULT(pthread_mutex_destroy(&rwlock->m), result);
-    UPD_RESULT(pthread_cond_destroy (&rwlock->cw), result);
-    free(*rwlock2);
+    UPD_RESULT(pthread_mutex_unlock (&rwlock->m), r);
+    UPD_RESULT(pthread_mutex_destroy(&rwlock->m), r);
+    UPD_RESULT(pthread_cond_destroy (&rwlock->cw), r);
 
 #else /* USE_RWLOCK_SRWLock */
-    if (*(void **) &rwlock->l) return EBUSY;
-    pthread_rwlock_t *rwlock2 = rwlock_;
-    *rwlock_= NULL; /* dereference first, free later */
-    _ReadWriteBarrier();
     CloseHandle(rwlock->semTimedR);
     CloseHandle(rwlock->semTimedW);
-    rwlock->valid  = DEAD_RWLOCK;
-    free(*rwlock2);
 
 #endif
-    return result;
+    rwlock->valid  = DEAD_RWLOCK;
+    free(rDestroy);
+    return 0;
 } 
 
 int pthread_rwlock_init (pthread_rwlock_t *rwlock_, const pthread_rwlockattr_t *attr)
 {
-    int result=0;
-    rwlock_t *rwlock;
+    int r = rwl_ref_init(rwlock_);
+     if(r) return r;
 
-    if ( !(rwlock = (pthread_rwlock_t)malloc(sizeof(*rwlock))) ) {
+     rwlock_t *rwlock;
+
+    if ( !(rwlock = (pthread_rwlock_t)calloc(1, sizeof(*rwlock))) ) {
         return ENOMEM; 
     }
-    memset(rwlock, 0,sizeof(*rwlock));
+    rwlock->valid = DEAD_RWLOCK;
+
 #ifdef USE_RWLOCK_pthread_cond
-    if ( (result = pthread_mutex_init (&rwlock->m, NULL)) ) {
+    if ( (r = pthread_mutex_init (&rwlock->m, NULL)) ) {
         free(rwlock);
-        return result;
+        return r;
     }
 
-    if ( (result = pthread_cond_init (&rwlock->cr, NULL)) ) {
+    if ( (r = pthread_cond_init (&rwlock->cr, NULL)) ) {
         pthread_mutex_destroy (&rwlock->m);
         free(rwlock);
-        return result;
+        return r;
     }
 
-    if ( (result = pthread_cond_init (&rwlock->cw, NULL)) ) {
+    if ( (r = pthread_cond_init (&rwlock->cw, NULL)) ) {
         pthread_cond_destroy (&rwlock->cr);
         pthread_mutex_destroy (&rwlock->m);
         free(rwlock);
-        return result;
+        return r;
     }
 
 #else /* USE_RWLOCK_SRWLock */
@@ -157,7 +166,7 @@ int pthread_rwlock_init (pthread_rwlock_t *rwlock_, const pthread_rwlockattr_t *
 #endif
     rwlock->valid = LIFE_RWLOCK;
     *rwlock_ = rwlock;
-    return result;
+    return r;
 } 
 
 #ifdef USE_RWLOCK_pthread_cond
@@ -172,17 +181,15 @@ static void _pthread_once_rwlock_readcleanup (pthread_once_t *arg)
 
 int pthread_rwlock_rdlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
+    int result = rwl_ref(rwlock_,0);
+    if(result) return result;
     
-    CHECK_RWLOCK(rwlock_);
-    if (( result=rwl_set_owner(rwlock_,0) )) return result;
-
     rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 
     pthread_testcancel();
 #ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) ) {
-        return result;
+        return rwl_unref(rwlock_, result);
     }
 
     if (rwlock->writers) {
@@ -205,23 +212,22 @@ int pthread_rwlock_rdlock (pthread_rwlock_t *rwlock_)
     AcquireSRWLockShared(&rwlock->l);
     
 #endif
-    if (!result) result = rwl_set_owner(rwlock_,RWL_SET);
-    return result;
+    if (!result) result = rwl_check_owner(rwlock_,RWL_SET);
+    return rwl_unref(rwlock_, result);
 }
 
 int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 {
-    int result=0;
-
-    CHECK_RWLOCK(rwlock_);
-    if (( result=rwl_set_owner(rwlock_,0) )) return result;
+    if (!ts) return EINVAL;
+    int result = rwl_ref(rwlock_,0);
+    if(result) return result;
 
     rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 
     pthread_testcancel();
 #ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
-        return result;
+        return rwl_unref(rwlock_, result);
 
     if (rwlock->writers) {
         rwlock->readers_count++;
@@ -234,9 +240,9 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         rwlock->readers_count--;
     }
 
-    if (result == 0) {
-        result=rwl_set_owner(rwlock_,RWL_SET);
-        if (!result) rwlock->readers++;
+    if (!result) {
+          result = rwl_check_owner(rwlock_,RWL_SET);
+          if (!result) rwlock->readers++;
     }
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
 
@@ -250,7 +256,7 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 
     if (!pthread_rwlock_tryrdlock(rwlock_)) {
         printf("%ld: pthread_rwlock_timedrdlock try success:  %ld ms\n",GetCurrentThreadId(), dwMilliSecs(t - ct));
-        return 0;
+        return rwl_unref(rwlock_, 0);
     }
     InterlockedIncrement(&rwlock->treaders_count);
     while (1)
@@ -261,11 +267,12 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         case WAIT_OBJECT_0:
             /* Try to grab lock && check if it is a rdlock: */
             printf("%ld: pthread_rwlock_timedrdlock Try to grab lock\n",GetCurrentThreadId());
-            if (!pthread_rwlock_tryrdlock(rwlock_)) {
+            if (!(result=pthread_rwlock_tryrdlock(rwlock_))) {
                 InterlockedDecrement(&rwlock->treaders_count);
                 printf("%ld: pthread_rwlock_timedrdlock grabbed lock c=%ld\n",GetCurrentThreadId(), rwlock->treaders_count);
-                return 0;
+                return rwl_unref(rwlock_, 0);
             }
+            if( result!=EBUSY) return rwl_unref(rwlock_, result);
             printf("%ld: pthread_rwlock_timedrdlock Try to grab lock failed\n",GetCurrentThreadId());
 
             /* Not a rdlock for us, redo the signal and wait again. */
@@ -285,7 +292,7 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         default:
             printf("%ld: pthread_rwlock_timedrdlock GLE=%ld\n",GetCurrentThreadId(), GetLastError());
             InterlockedDecrement(&rwlock->treaders_count);
-            return EINVAL;
+            return rwl_unref(rwlock_, EINVAL);
         }
 
         /* Get current time */
@@ -294,7 +301,7 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         /* Have we waited long enough? */
         if (ct > t) {
             InterlockedDecrement(&rwlock->treaders_count);
-            return ETIMEDOUT;
+            return rwl_unref(rwlock_, ETIMEDOUT);
         }
     }
 
@@ -305,33 +312,32 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
     while (1)
     {
         /* Try to grab lock */
-        if (!pthread_rwlock_tryrdlock(rwlock_)) {
-            return rwl_set_owner(rwlock_,RWL_SET);
+        if (!(result=pthread_rwlock_tryrdlock(rwlock_))) {
+            return rwl_unref(rwlock_, 0);
         }
+        if( result!=EBUSY) return rwl_unref(rwlock_, result);
         
         /* Get current time */
         ct = _pthread_time_in_ms();
         
         /* Have we waited long enough? */
-        if (ct > t) return ETIMEDOUT;
+        if (ct > t) return rwl_unref(rwlock_, ETIMEDOUT);
     }
 
 #endif /* Busy wait solution */
 #endif /* USE_RWLOCK_SRWLock */
-    if (!result) result = rwl_set_owner(rwlock_,RWL_SET);
-    return result;
+    return rwl_unref(rwlock_, result);
 }
 
 int pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
-    
-    CHECK_RWLOCK(rwlock_);
-    if (( result=rwl_set_owner(rwlock_,RWL_TRY) )) return result;
+    int result = rwl_ref(rwlock_,RWL_TRY);
+    if(result) return result;
+
     rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 #ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
-        return result;
+        return rwl_unref(rwlock_, result);
 
     if (rwlock->writers)
         result = EBUSY;
@@ -348,38 +354,37 @@ int pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlock_)
     {
         /* Unlocked to locked */
         if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)(16+RTL_SRWLOCK_OWNED), NULL))
-            return rwl_set_owner(rwlock_,RWL_SET);
-        return EBUSY;
+            return rwl_unref(rwlock_,rwl_check_owner(rwlock_,RWL_SET));
+        return rwl_unref(rwlock_,EBUSY);
     }
     
     /* A single writer exists */
-    if (state == (void *) RTL_SRWLOCK_OWNED) return EBUSY;
+    if (state == (void *) RTL_SRWLOCK_OWNED) return rwl_unref(rwlock_,EBUSY);
     
     /* Multiple writers exist? */
-    if ((uintptr_t) state & RTL_SRWLOCK_LOCKED) return EBUSY;
+    if ((uintptr_t) state & RTL_SRWLOCK_LOCKED) return rwl_unref(rwlock_,EBUSY);
     
     if (InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *) ((uintptr_t)state + 16), state) == state)
-            return rwl_set_owner(rwlock_,RWL_SET);
+            return rwl_unref(rwlock_,rwl_check_owner(rwlock_,RWL_SET));
     
     result = EBUSY;
 
 #endif
-    if (!result) result = rwl_set_owner(rwlock_,RWL_SET);
-    return result;
+    if (!result) result = rwl_check_owner(rwlock_,RWL_SET);
+    return rwl_unref(rwlock_,result);
 } 
 
 int pthread_rwlock_trywrlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
-    
-    CHECK_RWLOCK(rwlock_);
-    if (( result=rwl_set_owner(rwlock_,RWL_TRY) )) return result;
+    int result = rwl_ref(rwlock_,RWL_TRY);
+    if(result) return result;
+
     rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 #ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
-        return result;
+        return rwl_unref(rwlock_, result);
 
-    if (rwlock->writers > 0 || rwlock->readers > 0)
+    if (rwlock->writers || rwlock->readers)
         result = EBUSY;
     else {
         rwlock->writers = 1;
@@ -390,30 +395,29 @@ int pthread_rwlock_trywrlock (pthread_rwlock_t *rwlock_)
 #else /* USE_RWLOCK_SRWLock */
     /* Try to grab lock if it has no users */
     if (!InterlockedCompareExchangePointer((PVOID *)(&rwlock->l), (void *)RTL_SRWLOCK_OWNED, NULL)) {
-        return rwl_set_owner(rwlock_,RWL_SET);
+        return rwl_unref(rwlock_, rwl_check_owner(rwlock_,RWL_SET));
     }
     
     result = EBUSY;
 
 #endif
-    if (!result) result = rwl_set_owner(rwlock_,RWL_SET);
-    return result;
+    if (!result) result = rwl_check_owner(rwlock_,RWL_SET);
+    return rwl_unref(rwlock_, result);
 } 
 
 int pthread_rwlock_unlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
-    
-    CHECK_RWLOCK(rwlock_);
+    int result = rwl_ref_unlock(rwlock_);
+    if(result) return result;
+
     /* Check ownership here because the ReleaseSRW* functions
      * would throw an exception instead of return an error.
      * Still need SEH for other errors it could throw.
      */
-    if (( result=rwl_unset_owner(rwlock_,0) )) return result;
     rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 #ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
-        return result;
+        return rwl_unref(rwlock_, result);
 
     if (rwlock->writers) {
         rwlock->writers = 0;
@@ -478,7 +482,7 @@ int pthread_rwlock_unlock (pthread_rwlock_t *rwlock_)
     }
 #endif
     if (!result) result = rwl_unset_owner(rwlock_,RWL_SET);
-    return result;
+    return rwl_unref(rwlock_, result);
 } 
 
 #ifdef USE_RWLOCK_pthread_cond
@@ -493,15 +497,14 @@ static void _pthread_once_rwlock_writecleanup (pthread_once_t *arg)
 
 int pthread_rwlock_wrlock (pthread_rwlock_t *rwlock_)
 {
-    int result=0;
-    
-    CHECK_RWLOCK(rwlock_);
-    if (( result=rwl_set_owner(rwlock_,0) )) return result;
+    int result = rwl_ref(rwlock_,0);
+    if(result) return result;
+  
     rwlock_t *rwlock = (rwlock_t *)*rwlock_;
     pthread_testcancel();
 #ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
-        return result;
+        return rwl_unref(rwlock_,result);
 
     if (rwlock->writers || rwlock->readers > 0) {
         rwlock->writers_count++;
@@ -522,24 +525,24 @@ int pthread_rwlock_wrlock (pthread_rwlock_t *rwlock_)
     AcquireSRWLockExclusive(&rwlock->l);
 
 #endif
-    if (!result) result = rwl_set_owner(rwlock_,RWL_SET);
-    return result;
+    if (!result) result = rwl_check_owner(rwlock_,RWL_SET);
+    return rwl_unref(rwlock_,result);
 }
 
 int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 {
-    int result=0;
+    if (!ts) return EINVAL;
+    int result = rwl_ref(rwlock_,0);
+    if(result) return result;
     
-    CHECK_RWLOCK(rwlock_);
-    if (( result=rwl_set_owner(rwlock_,0) )) return result;
     rwlock_t *rwlock = (rwlock_t *)*rwlock_;
 
     pthread_testcancel();
 #ifdef USE_RWLOCK_pthread_cond
     if ( (result = pthread_mutex_lock (&rwlock->m)) )
-        return result;
+        return rwl_unref(rwlock_,result);
 
-    if (rwlock->writers || rwlock->readers > 0) {
+    if (rwlock->writers || rwlock->readers) {
         rwlock->writers_count++;
         pthread_cleanup_push (_pthread_once_rwlock_writecleanup, (void*)rwlock);
         while (rwlock->writers || rwlock->readers > 0) {
@@ -549,8 +552,10 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         pthread_cleanup_pop (0);
         rwlock->writers_count--;
     }
-    if (!result)
-        rwlock->writers = 1;
+    if (!result) {
+          result = rwl_check_owner(rwlock_,RWL_SET);
+          if (!result) rwlock->writers = 1;
+    }
 
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
 
@@ -562,7 +567,7 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
     uintptr_t s;
 
     if (!pthread_rwlock_trywrlock(rwlock_)) {
-        return 0;
+        return rwl_unref(rwlock_,0);
     }
     InterlockedIncrement(&rwlock->twriters_count);
     while (1)
@@ -572,10 +577,11 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         case WAIT_OBJECT_0:
             /* Try to grab lock && check if it is a wrlock: */
             printf("%ld: pthread_rwlock_timedwrlock Try to grab lock\n",GetCurrentThreadId());
-            if (!pthread_rwlock_trywrlock(rwlock_)) {
+            if (!( result=pthread_rwlock_trywrlock(rwlock_) )) {
                 InterlockedDecrement(&rwlock->twriters_count);
-                return 0;
+                return rwl_unref(rwlock_,0);
             }
+            if( result!=EBUSY) return rwl_unref(rwlock_, result);
             printf("%ld: pthread_rwlock_timedwrlock Try to grab lock failed\n",GetCurrentThreadId());
 
             /* Not a wrlock for us, redo the signal and wait again. */
@@ -594,7 +600,7 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         default:
             printf("%ld: pthread_rwlock_timedwrlock GLE=%ld\n",GetCurrentThreadId(), GetLastError());
             InterlockedDecrement(&rwlock->twriters_count);
-            return EINVAL;
+            return rwl_unref(rwlock_,EINVAL);
         }
 
         /* Get current time */
@@ -603,7 +609,7 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         /* Have we waited long enough? */
         if (ct > t) {
             InterlockedDecrement(&rwlock->twriters_count);
-            return ETIMEDOUT;
+            return rwl_unref(rwlock_,ETIMEDOUT);
         }
     }
 
@@ -613,19 +619,21 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
     while (1)
     {
         /* Try to grab lock */
-        if (!pthread_rwlock_trywrlock(rwlock_)) return 0;
+        if (!( result=pthread_rwlock_trywrlock(rwlock_) )) {
+            return rwl_unref(rwlock_,0);
+        }
+        if( result!=EBUSY) return rwl_unref(rwlock_, result);
         
         /* Get current time */
         ct = _pthread_time_in_ms();
         
         /* Have we waited long enough? */
-        if (ct > t) return ETIMEDOUT;
+        if (ct > t) return rwl_unref(rwlock_,ETIMEDOUT);
     }
 
 #endif /* Busy wait solution */
 #endif /* USE_RWLOCK_SRWLock */
-    if (!result) result = rwl_set_owner(rwlock_,RWL_SET);
-    return result;
+    return rwl_unref(rwlock_,result);
 }
 
 int pthread_rwlockattr_destroy(pthread_rwlockattr_t *a)

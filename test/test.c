@@ -946,7 +946,9 @@ int rwlockTimed_main(void)
   printf("Enter Testcase rwlockTimed_main\n");
 
   printf("Main, initialize the read write lock\n");
-  rc = pthread_rwlock_init(&rwlock, NULL);
+  //rc = pthread_rwlock_init(&rwlock, NULL);
+  rwlock = PTHREAD_RWLOCK_INITIALIZER;
+  printf("RWL %p\n",rwlock);
   checkResults("pthread_rwlock_init()\n", rc);
 
   printf("Main, get the write lock\n");
@@ -969,6 +971,7 @@ int rwlockTimed_main(void)
   checkResults("pthread_join\n", rc);
 
   rc = pthread_rwlock_destroy(&rwlock);
+  rwl_print(&rwlock,"destroyed?");
   checkResults("pthread_rwlock_destroy()\n", rc);
   printf("Main completed\n");
   return 0;

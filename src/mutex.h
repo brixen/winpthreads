@@ -85,9 +85,5 @@ inline int mutex_static_init(volatile pthread_mutex_t *m);
 int _mutex_trylock(pthread_mutex_t *m);
 void mutex_print(volatile pthread_mutex_t *m, char *txt);
 void mutex_print_set(int state);
-inline int mutex_unref(volatile pthread_mutex_t *m, int r);
-
-/* External: must be called by owner of a locked mutex: */
-inline int mutex_ref_ext(volatile pthread_mutex_t *m);
 
 #endif

@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include "pthread.h"
+#include "ref.h"
 #include "cond.h"
 #include "mutex.h"
 
@@ -12,11 +13,11 @@
 
 static inline int cond_static_init(volatile pthread_cond_t *c)
 {
-    pthread_cond_t c_tmp, *c_replaced;
+    pthread_cond_t c_tmp=NULL, *c_replaced;
     int r = pthread_cond_init(&c_tmp, NULL);
 
     if (!r) {
-        c_replaced = (pthread_cond_t *)InterlockedCompareExchangePointerAcquire(
+        c_replaced = (pthread_cond_t *)InterlockedCompareExchangePointer(
             (PVOID *)c, 
             c_tmp,
             PTHREAD_COND_INITIALIZER);

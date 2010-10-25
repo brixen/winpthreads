@@ -4,10 +4,14 @@
 #define LIFE_RWLOCK 0xBAB1F0ED
 #define DEAD_RWLOCK 0xDEADB0EF
 
-#define CHECK_RWLOCK(l)  { \
-    if (!(l) || !*l \
-        || ( ((rwlock_t *)(*l))->valid != (unsigned int)LIFE_RWLOCK ) ) \
-        return EINVAL; }
+#ifdef USE_RWLOCK_SRWLock
+#define COND_RWL_LOCKED(r)	 (*(void **) &r->l)
+#else
+#define COND_RWL_LOCKED(r)	(r->readers||r->writers||r->readers_count||r->writers_count)
+#endif
+
+#define INIT_RWLOCK(rwl)  { int r; \
+    if (STATIC_RWL_INITIALIZER(*rwl)) { if ((r = rwlock_static_init(rwl))) return r; }}
 
 #ifndef SRWLOCK_INIT
 #define RTL_SRWLOCK_INIT {0}   
@@ -48,6 +52,8 @@ WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 
 #endif /* USE_RWLOCK_SRWLock */
 
+#define STATIC_RWL_INITIALIZER(x)		((pthread_rwlock_t)(x) == ((pthread_rwlock_t)PTHREAD_RWLOCK_INITIALIZER))
+
 typedef struct rwlock_t rwlock_t;
 struct rwlock_t {
     unsigned int valid;
@@ -69,6 +75,13 @@ struct rwlock_t {
 #endif
 };
 
+#define RWL_SET	0x01
+#define RWL_TRY	0x02
+
 void rwl_print(volatile pthread_rwlock_t *rwl, char *txt);
 void rwl_print_set(int state);
+
+inline int rwlock_static_init(volatile pthread_rwlock_t *r);
+inline int rwl_check_owner(pthread_rwlock_t *rwl, int flags);
+inline int rwl_unset_owner(pthread_rwlock_t *rwl, int flags);
 #endif
