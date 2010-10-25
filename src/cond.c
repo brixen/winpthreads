@@ -11,7 +11,7 @@
 
 #include "misc.h"
 
-static inline int cond_static_init(volatile pthread_cond_t *c)
+inline int cond_static_init(volatile pthread_cond_t *c)
 {
     pthread_cond_t c_tmp=NULL, *c_replaced;
     int r = pthread_cond_init(&c_tmp, NULL);
@@ -34,20 +34,20 @@ static inline int cond_static_init(volatile pthread_cond_t *c)
 
 int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
 {
+    int r = cond_ref_init(c);
+    if(r) return r;
+
     cond_t *_c;
 
-    int r = 0;
     (void) a;
 
-    if (!c)	return EINVAL; 
-    if ( !(_c = (pthread_cond_t)malloc(sizeof(*_c))) ) {
+    if ( !(_c = (pthread_cond_t)calloc(1,sizeof(*_c))) ) {
         return ENOMEM; 
     }
+    _c->valid  = DEAD_COND;
 
 #if defined  USE_COND_ConditionVariable
     InitializeConditionVariable(&_c->CV);
-    _c->valid = LIFE_COND;
-    *c = _c;
 
 #else /* USE_COND_SignalObjectAndWait USE_COND_Semaphore */
     _c->waiters_count_ = 0;
@@ -67,7 +67,6 @@ int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
         if (_c->waiters_done_ == NULL) { /*assume EAGAIN (but could be ENOMEM) */
             DeleteCriticalSection(&_c->waiters_count_lock_);
             CloseHandle(_c->sema_);
-            _c->valid  = DEAD_COND;
             free(_c);
             r = EAGAIN;
         }
@@ -83,19 +82,12 @@ int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
 
 int pthread_cond_destroy(pthread_cond_t *c)
 {
-    cond_t *_c = (cond_t *)*c;
+    pthread_cond_t cDestroy;
+    int r = cond_ref_destroy(c,&cDestroy);
+    if(r) return r;
+    if(!cDestroy) return 0; /* destroyed a (still) static initialized cond */
 
-    if (!c || !*c)	return EINVAL; 
-    if (*c == PTHREAD_COND_INITIALIZER) {
-        *c = NULL;
-        return 0;
-    }
-
-    pthread_cond_t *c_del = c;
-    *c = NULL; /* dereference first, free later */
-    _ReadWriteBarrier();
-    _c->valid  = DEAD_COND;
-
+    cond_t *_c = (cond_t *)cDestroy;
 #if defined  USE_COND_ConditionVariable
     /* There is indeed no DeleteConditionVariable */
 
@@ -105,13 +97,16 @@ int pthread_cond_destroy(pthread_cond_t *c)
     CloseHandle(_c->sema_);
 
 #endif /*USE_COND_ConditionVariable */
-    free(*c_del);
+    _c->valid  = DEAD_COND;
+    free(cDestroy);
     return 0;
 }
 
 int pthread_cond_signal (pthread_cond_t *c)
 {
-    CHECK_COND(c);	
+    int r = cond_ref(c);
+    if(r) return r;
+
     cond_t *_c = (cond_t *)*c;
 
 #if defined USE_COND_SignalObjectAndWait
@@ -134,12 +129,14 @@ int pthread_cond_signal (pthread_cond_t *c)
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
 #endif /* USE_COND_SignalObjectAndWait */
-    return 0;
+    return cond_unref(c,0);
 }
 
 int pthread_cond_broadcast (pthread_cond_t *c)
 {
-    CHECK_COND(c);	
+    int r = cond_ref(c);
+    if(r) return r;
+
     cond_t *_c = (cond_t *)*c;
 
 #if defined USE_COND_SignalObjectAndWait
@@ -183,18 +180,19 @@ int pthread_cond_broadcast (pthread_cond_t *c)
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
 #endif /* USE_COND_SignalObjectAndWait */
-    return 0;
+    return cond_unref(c,0);
 }
 
 
 int pthread_cond_wait (pthread_cond_t *c, 
                               pthread_mutex_t *external_mutex)
 {
-    INIT_COND(c);
-    cond_t *_c = (cond_t *)*c;
-    int r = 0;
+    int r = cond_ref_wait(c,external_mutex);
+    if(r) return r;
 
-    if ((r=mutex_ref_ext(external_mutex)))return r;
+    cond_t *_c = (cond_t *)*c;
+
+    if ((r=mutex_ref_ext(external_mutex)))return cond_unref_wait(c,r);
 
     pthread_testcancel();
 #if defined USE_COND_SignalObjectAndWait
@@ -267,17 +265,18 @@ int pthread_cond_wait (pthread_cond_t *c,
     pthread_mutex_lock(external_mutex);
 
 #endif /* USE_COND_SignalObjectAndWait */
-    return mutex_unref(external_mutex,r);
+    return cond_unref_wait(c,mutex_unref(external_mutex,r));
 }
 
 int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, struct timespec *t)
 {
-    int r = 0;
     DWORD dwr;
-    INIT_COND(c);
+    int r = cond_ref_wait(c,external_mutex);
+    if(r) return r;
+
     cond_t *_c = (cond_t *)*c;
 
-    if ((r=mutex_ref_ext(external_mutex)))return r;
+    if ((r=mutex_ref_ext(external_mutex)))return cond_unref_wait(c,r);
 
     pthread_testcancel();
 #if defined USE_COND_SignalObjectAndWait
@@ -346,10 +345,12 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 
     dwr = _pthread_rel_time_in_ms(t);
     printf("pthread_cond_timedwait wait %d ms\n", (int) dwr);
-    if (!SleepConditionVariableCS(&_c->CV,  &_m->cs.cs, dwr)) return ETIMEDOUT;
-    
-    /* We can have a spurious wakeup after the timeout */
-    if (!_pthread_rel_time_in_ms(t)) return ETIMEDOUT;
+    if (!SleepConditionVariableCS(&_c->CV,  &_m->cs.cs, dwr)) {
+        r = ETIMEDOUT;
+    } else {
+        /* We can have a spurious wakeup after the timeout */
+        if (!_pthread_rel_time_in_ms(t)) r = ETIMEDOUT;
+    }
 
 #else /*default USE_COND_Semaphore */
     pthread_mutex_unlock(external_mutex);
@@ -379,7 +380,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     pthread_mutex_lock(external_mutex);
 
 #endif /* USE_COND_SignalObjectAndWait */
-    return mutex_unref(external_mutex,r);
+    return cond_unref_wait(c,mutex_unref(external_mutex,r));
 }
 
 int pthread_condattr_destroy(pthread_condattr_t *a)

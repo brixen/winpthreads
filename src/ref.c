@@ -5,11 +5,13 @@
 #include "spinlock.h"
 #include "mutex.h"
 #include "rwlock.h"
+#include "cond.h"
 #include "ref.h"
 #include "misc.h"
 
 static spin_t mutex_global = {0,LIFE_SPINLOCK,0};
 static spin_t rwl_global = {0,LIFE_SPINLOCK,0};
+static spin_t cond_global = {0,LIFE_SPINLOCK,0};
 
 inline int mutex_unref(volatile pthread_mutex_t *m, int r)
 {
@@ -204,6 +206,105 @@ inline int rwl_ref_init(volatile pthread_rwlock_t *rwl )
     }
 
     _spin_lite_unlock(&rwl_global);
+    return r;
+}
+
+
+inline int cond_unref(volatile pthread_cond_t *cond, int res)
+{
+    _spin_lite_lock(&cond_global);
+     ((cond_t *)*cond)->busy--;
+    _spin_lite_unlock(&cond_global);
+    return res;
+}
+
+inline int cond_unref_wait(volatile pthread_cond_t *cond, int res)
+{
+    _spin_lite_lock(&cond_global);
+    cond_t *c_ = (cond_t *)*cond;
+    c_->bound = NULL;
+    c_->busy--;
+    _spin_lite_unlock(&cond_global);
+    return res;
+}
+
+inline int cond_ref(volatile pthread_cond_t *cond)
+{
+    int r = 0;
+    INIT_COND(cond);
+    _spin_lite_lock(&cond_global);
+
+    if (!cond || !*cond) r = EINVAL;
+    else {
+        ((cond_t *)*cond)->busy ++;
+    }
+
+    _spin_lite_unlock(&cond_global);
+    if (!r)assert(((cond_t *)*cond)->valid == LIFE_COND);
+
+    return r;
+}
+
+inline int cond_ref_wait(volatile pthread_cond_t *cond, pthread_mutex_t *m)
+{
+    int r = 0;
+    INIT_COND(cond);
+    _spin_lite_lock(&cond_global);
+
+    if (!cond || !*cond) r = EINVAL;
+    else {
+        cond_t *c_ = (cond_t *)*cond;
+        /* Different mutexes were supplied for concurrent pthread_cond_wait() or pthread_cond_timedwait() operations on the same condition variable: */
+        if (c_->bound && c_->bound != m) {
+            r = EINVAL;
+        } else {
+            c_->bound = m;
+            c_->busy ++;
+        }
+    }
+
+    _spin_lite_unlock(&cond_global);
+    if (!r)assert(((cond_t *)*cond)->valid == LIFE_COND);
+
+    return r;
+}
+
+inline int cond_ref_destroy(volatile pthread_cond_t *cond, pthread_cond_t *cDestroy )
+{
+    int r = 0;
+
+    *cDestroy = NULL;
+    if (_spin_lite_trylock(&cond_global)) return EBUSY;
+    
+    if (!cond || !*cond)  r = EINVAL;
+    else {
+        cond_t *c_ = (cond_t *)*cond;
+        if (STATIC_COND_INITIALIZER(*cond)) *cond = NULL;
+        else if (c_->valid != LIFE_COND) r = EINVAL;
+        else if (c_->busy) r = EBUSY;
+        else {
+            *cDestroy = *cond;
+            *cond = NULL;
+        }
+    }
+
+    _spin_lite_unlock(&cond_global);
+    return r;
+}
+
+inline int cond_ref_init(volatile pthread_cond_t *cond )
+{
+    int r = 0;
+
+    _spin_lite_lock(&cond_global);
+    
+    if (!cond)  r = EINVAL;
+    else if (*cond && !STATIC_COND_INITIALIZER(*cond)) {
+        cond_t *r_ = (cond_t *)*cond;
+        if (r_->valid == LIFE_COND) r = EBUSY;
+    }
+
+    _spin_lite_unlock(&cond_global);
     return r;
 }
 

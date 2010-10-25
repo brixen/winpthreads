@@ -37,10 +37,13 @@ WINBASEAPI BOOL WINAPI SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVa
 
 #endif /* USE_COND_ConditionVariable */
 
+#define STATIC_COND_INITIALIZER(x)		((pthread_cond_t)(x) == ((pthread_cond_t)PTHREAD_COND_INITIALIZER))
+
 typedef struct cond_t cond_t;
 struct cond_t
 {
     unsigned int valid;   
+    int busy;
     LONG waiters_count_; /* Number of waiting threads.  */
 #if defined USE_COND_ConditionVariable
     CRITICAL_SECTION waiters_count_lock_; /* Serialize access to <waiters_count_>.  */
@@ -57,6 +60,8 @@ struct cond_t
                       allows us to optimize the code if we're just signaling.  */
 
 #endif
+    pthread_mutex_t *bound; /*bound mutex */
 };
 
+inline int cond_static_init(volatile pthread_rwlock_t *r);
 #endif
