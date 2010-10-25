@@ -25,8 +25,8 @@ struct _pthread_v
     unsigned int keymax;
     void **keyval;
     DWORD tid;
-	int rwlc;
-	pthread_rwlock_t rwlq[RWLS_PER_THREAD];
+    int rwlc;
+    pthread_rwlock_t rwlq[RWLS_PER_THREAD];
 
     jmp_buf jb;
 };

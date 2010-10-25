@@ -6,7 +6,7 @@
 
 #define CHECK_RWLOCK(l)  { \
     if (!(l) || !*l \
-		|| ( ((rwlock_t *)(*l))->valid != (unsigned int)LIFE_RWLOCK ) ) \
+        || ( ((rwlock_t *)(*l))->valid != (unsigned int)LIFE_RWLOCK ) ) \
         return EINVAL; }
 
 #ifndef SRWLOCK_INIT
@@ -30,7 +30,7 @@ WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 
 #ifdef USE_RWLOCK_SRWLock
 #define AT_MOST_1(x)				((x)?1:0)
-	
+
 #ifndef RTL_SRWLOCK_BITS
 #define RTL_SRWLOCK_OWNED_BIT		0
 #define RTL_SRWLOCK_CONTENDED_BIT   1
@@ -41,7 +41,7 @@ WINBASEAPI BOOLEAN WINAPI TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 #define RTL_SRWLOCK_SHARED			(1 << RTL_SRWLOCK_SHARED_BIT)
 #define RTL_SRWLOCK_CONTENTION_LOCK (1 << RTL_SRWLOCK_CONTENTION_LOCK_BIT)
 #define RTL_SRWLOCK_MASK			(RTL_SRWLOCK_OWNED | RTL_SRWLOCK_CONTENDED | \
-									RTL_SRWLOCK_SHARED | RTL_SRWLOCK_CONTENTION_LOCK)
+                                    RTL_SRWLOCK_SHARED | RTL_SRWLOCK_CONTENTION_LOCK)
 #define RTL_SRWLOCK_BITS    4
 #endif /* RTL_SRWLOCK_BITS */
 #define RTL_SRWLOCK_LOCKED   (RTL_SRWLOCK_CONTENDED|RTL_SRWLOCK_SHARED|RTL_SRWLOCK_CONTENTION_LOCK)
@@ -65,7 +65,7 @@ struct rwlock_t {
     LONG twriters_count;	/* Number of waiting timed writers.  */
     HANDLE semTimedR;
     HANDLE semTimedW;
-	SRWLOCK l;
+    SRWLOCK l;
 #endif
 };
 

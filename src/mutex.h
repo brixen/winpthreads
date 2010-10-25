@@ -21,14 +21,14 @@
 #define GET_LOCKCNT(m)	(m->lockOwner)
 #define GET_RCNT(m)		(m->busy) /* not accurate! */
 #define SET_TID(m,tid)	{ if (m->type != PTHREAD_MUTEX_RECURSIVE) \
-							m->owner = tid; \
-						else \
-							if (1==InterlockedIncrement(&m->lockOwner))m->owner = tid; }
+                            m->owner = tid; \
+                        else \
+                            if (1==InterlockedIncrement(&m->lockOwner))m->owner = tid; }
 #define SET_OWNER(m)	SET_TID(m,GetCurrentThreadId())
 #define UNSET_OWNER(m)	{ if (m->type != PTHREAD_MUTEX_RECURSIVE) \
-							m->owner = 0; \
-						else \
-							if (0==InterlockedDecrement(&m->lockOwner))m->owner = 0; }
+                            m->owner = 0; \
+                        else \
+                            if (0==InterlockedDecrement(&m->lockOwner))m->owner = 0; }
 #define LOCK_UNDO(m)
 #endif
 #define COND_DEADLK_NR(m)	((m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(m))
@@ -39,11 +39,11 @@
 
 #define CHECK_MUTEX(m)  { \
     if (!(m) || !*m || (STATIC_INITIALIZER(*m)) \
-		|| ( ((mutex_t *)(*m))->valid != (unsigned int)LIFE_MUTEX ) ) \
+        || ( ((mutex_t *)(*m))->valid != (unsigned int)LIFE_MUTEX ) ) \
         return EINVAL; }
 
 #define INIT_MUTEX(m)  { int r; \
-	if (STATIC_INITIALIZER(*m)) { if ((r = mutex_static_init(m))) return r; }}
+    if (STATIC_INITIALIZER(*m)) { if ((r = mutex_static_init(m))) return r; }}
 
 #define LIFE_MUTEX 0xBAB1F00D
 #define DEAD_MUTEX 0xDEADBEEF
@@ -51,14 +51,14 @@
 #if defined USE_MUTEX_CriticalSection
 typedef union _csu _csu;
 union _csu {
-	RTL_CRITICAL_SECTION rc;
-	CRITICAL_SECTION cs;
+    RTL_CRITICAL_SECTION rc;
+    CRITICAL_SECTION cs;
 };
 
 typedef union _tid_u _tid_u;
 union _tid_u {
-	HANDLE	h;
-	DWORD	tid;
+    HANDLE	h;
+    DWORD	tid;
 };
 
 #endif
@@ -70,15 +70,15 @@ struct mutex_t
     volatile LONG busy;   
     int type;   
 #if defined USE_MUTEX_Mutex
-	LONG lockOwner;
-	DWORD owner;
+    LONG lockOwner;
+    DWORD owner;
     HANDLE h;
 #else /* USE_MUTEX_CriticalSection.  */
     _csu cs;
 #endif
-	/* Prevent multiple (external) unlocks from messing up the semaphore signal state */
-	HANDLE semExt;
-	LONG lockExt;
+    /* Prevent multiple (external) unlocks from messing up the semaphore signal state */
+    HANDLE semExt;
+    LONG lockExt;
 };
 
 inline int mutex_static_init(volatile pthread_mutex_t *m);

@@ -3,7 +3,7 @@
 
 #define CHECK_SPINLOCK(l)  { \
     if (!(l) || !*l \
-		|| ( ((spin_t *)(*l))->valid != (unsigned int)LIFE_SPINLOCK ) ) \
+        || ( ((spin_t *)(*l))->valid != (unsigned int)LIFE_SPINLOCK ) ) \
         return EINVAL; }
 
 #define CHECK_SPINLOCK_LITE(l) if (!(l)) return EINVAL;
@@ -11,7 +11,7 @@
 #ifdef USE_SPINLOCK_DEADLK
 
 #define CHECK_DEADLK_SL(l)	if (l->owner == GetCurrentThreadId()) \
-								return EDEADLK
+                                return EDEADLK
 #define SET_OWNER_SL(l)		l->owner = GetCurrentThreadId()
 #define SET_OWNER_SLIF(l,r)	if(!(r))SET_OWNER_SL(l)
 #define UNSET_OWNER_SL(l)	l->owner = 0
@@ -39,7 +39,7 @@
 
 #ifdef USE_SPINLOCK_EPERM
 #define CHECK_PERM_SL(l)	if (l->owner != GetCurrentThreadId()) \
-								return EPERM
+                                return EPERM
 #else /* NOP's */
 #define CHECK_PERM_SL(l)
 #endif
@@ -47,7 +47,7 @@
 typedef struct spin_t spin_t;
 struct spin_t
 {
-	DWORD owner;
+    DWORD owner;
     unsigned int valid;   
     LONG l;   
 };
@@ -57,8 +57,8 @@ struct spin_t
 
 typedef union _vol_spinlock _vol_spinlock;
 union _vol_spinlock {
-	LONG *l;
-	volatile LONG *lv;
+    LONG *l;
+    volatile LONG *lv;
 };
 
 int _spin_lite_trylock(spin_t *l);

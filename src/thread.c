@@ -59,7 +59,7 @@ static int _pthread_once_raw(pthread_once_t *o, void (*func)(void))
 
 void * pthread_timechange_handler_np(void * dummy)
 {
-	return 0;
+    return 0;
 }
 
 pthread_t pthread_self(void);
@@ -420,8 +420,8 @@ int pthread_cancel(pthread_t t)
 int pthread_kill(pthread_t t, int sig)
 {
     CHECK_OBJECT(t, ESRCH);
-	if (sig < SIGINT || sig > NSIG) return EINVAL;
-	return pthread_cancel(t);
+    if (sig < SIGINT || sig > NSIG) return EINVAL;
+    return pthread_cancel(t);
 }
 
 unsigned _pthread_get_state(pthread_attr_t *attr, unsigned flag)
@@ -566,7 +566,7 @@ int pthread_create_wrapper(void *args)
 
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
 {
-	struct _pthread_v *tv = (struct _pthread_v *)calloc(1,sizeof(struct _pthread_v));
+    struct _pthread_v *tv = (struct _pthread_v *)calloc(1,sizeof(struct _pthread_v));
     size_t ssize = 0;
 
     CHECK_PTR(th);

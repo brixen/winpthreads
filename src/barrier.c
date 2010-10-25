@@ -6,42 +6,42 @@
 int pthread_barrier_destroy(pthread_barrier_t *b_)
 {
     int r = 0;
- 	
-	CHECK_BARRIER(b_);
-	barrier_t *b = (barrier_t *)*b_;
-	
-	if ((r = pthread_mutex_lock(&b->m))) return EINVAL;
+    
+    CHECK_BARRIER(b_);
+    barrier_t *b = (barrier_t *)*b_;
+    
+    if ((r = pthread_mutex_lock(&b->m))) return EINVAL;
 
-	r = pthread_cond_destroy(&b->c);
+    r = pthread_cond_destroy(&b->c);
     if (!r) {
-		pthread_barrier_t *b2_ = b_;
-		*b_= NULL; /* dereference first, free later */
-		_ReadWriteBarrier();
-		b->valid = DEAD_BARRIER;
+        pthread_barrier_t *b2_ = b_;
+        *b_= NULL; /* dereference first, free later */
+        _ReadWriteBarrier();
+        b->valid = DEAD_BARRIER;
         b->count = 0;
         b->total = 0;
-		pthread_mutex_unlock(&b->m);
+        pthread_mutex_unlock(&b->m);
         pthread_mutex_destroy(&b->m);
-		free(*b2_);
+        free(*b2_);
     } else {
-		return EBUSY;
-	}
+        return EBUSY;
+    }
     return r;
 
 }
 
 int pthread_barrier_init(pthread_barrier_t *b_, void *attr, unsigned int count)
 {
-	barrier_t *b;
+    barrier_t *b;
 
-	int r = 0;
-	(void) attr;
+    int r = 0;
+    (void) attr;
 
-	if (!b_)	return EINVAL; 
-	if (!count)	return EINVAL; 
-	if ( !(b = (pthread_barrier_t)malloc(sizeof(*b))) ) {
-		return ENOMEM; 
-	}
+    if (!b_)	return EINVAL; 
+    if (!count)	return EINVAL; 
+    if ( !(b = (pthread_barrier_t)malloc(sizeof(*b))) ) {
+        return ENOMEM; 
+    }
 
     if ((r = pthread_mutex_init(&b->m, NULL))) return r;
 
@@ -50,8 +50,8 @@ int pthread_barrier_init(pthread_barrier_t *b_, void *attr, unsigned int count)
     } else {
         b->count = count;
         b->total = 0;
-		b->valid = LIFE_BARRIER;
-		*b_ = b;
+        b->valid = LIFE_BARRIER;
+        *b_ = b;
     }
     return r;
 }
@@ -59,8 +59,8 @@ int pthread_barrier_init(pthread_barrier_t *b_, void *attr, unsigned int count)
 int pthread_barrier_wait(pthread_barrier_t *b_)
 {
     int r;
-	CHECK_BARRIER(b_);
-	barrier_t *b = (barrier_t *)*b_;
+    CHECK_BARRIER(b_);
+    barrier_t *b = (barrier_t *)*b_;
 
     if ((r = pthread_mutex_lock(&b->m))) return EINVAL;
 

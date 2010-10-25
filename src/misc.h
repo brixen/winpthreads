@@ -13,8 +13,8 @@
 # define assert(e) \
    ((e) ? ((ASSERT_TRACE) ? fprintf(stderr, \
                                     "Assertion succeeded: (%s), file %s, line %d\n", \
-			            #e, __FILE__, (int) __LINE__), \
-	                            fflush(stderr) : \
+                        #e, __FILE__, (int) __LINE__), \
+                                fflush(stderr) : \
                              0) : \
           (fprintf(stderr, "Assertion failed: (%s), file %s, line %d\n", \
                    #e, __FILE__, (int) __LINE__), exit(1), 0))
