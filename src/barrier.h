@@ -12,6 +12,7 @@
 typedef struct barrier_t barrier_t;
 struct barrier_t
 {
+    int busy;
     int valid;
     int count;
     int total;

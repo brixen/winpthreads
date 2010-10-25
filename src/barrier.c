@@ -1,29 +1,29 @@
 #include <windows.h>
 #include "pthread.h"
-#include "barrier.h" 
+#include "barrier.h"
+#include "ref.h" 
 #include "misc.h"
 
 int pthread_barrier_destroy(pthread_barrier_t *b_)
 {
-    int r = 0;
+    pthread_barrier_t bDestroy;
+    int r = barrier_ref_destroy(b_,&bDestroy);
+    if(r) return r;
+
+    barrier_t *b = (barrier_t *)bDestroy;
     
-    CHECK_BARRIER(b_);
-    barrier_t *b = (barrier_t *)*b_;
-    
-    if ((r = pthread_mutex_lock(&b->m))) return EINVAL;
+    pthread_mutex_lock(&b->m);
 
     r = pthread_cond_destroy(&b->c);
     if (!r) {
-        pthread_barrier_t *b2_ = b_;
-        *b_= NULL; /* dereference first, free later */
-        _ReadWriteBarrier();
         b->valid = DEAD_BARRIER;
-        b->count = 0;
-        b->total = 0;
         pthread_mutex_unlock(&b->m);
         pthread_mutex_destroy(&b->m);
-        free(*b2_);
+        free(bDestroy);
     } else {
+        /* Could this happen? */
+        *b_ = bDestroy;
+        pthread_mutex_unlock (&b->m);
         return EBUSY;
     }
     return r;
@@ -32,14 +32,15 @@ int pthread_barrier_destroy(pthread_barrier_t *b_)
 
 int pthread_barrier_init(pthread_barrier_t *b_, void *attr, unsigned int count)
 {
-    barrier_t *b;
+    int r = barrier_ref_init(b_);
+    if(r) return r;
 
-    int r = 0;
     (void) attr;
+    barrier_t *b;
 
     if (!b_)	return EINVAL; 
     if (!count)	return EINVAL; 
-    if ( !(b = (pthread_barrier_t)malloc(sizeof(*b))) ) {
+    if ( !(b = (pthread_barrier_t)calloc(1,sizeof(*b))) ) {
         return ENOMEM; 
     }
 
@@ -49,7 +50,6 @@ int pthread_barrier_init(pthread_barrier_t *b_, void *attr, unsigned int count)
        pthread_mutex_destroy(&b->m);
     } else {
         b->count = count;
-        b->total = 0;
         b->valid = LIFE_BARRIER;
         *b_ = b;
     }
@@ -58,20 +58,20 @@ int pthread_barrier_init(pthread_barrier_t *b_, void *attr, unsigned int count)
 
 int pthread_barrier_wait(pthread_barrier_t *b_)
 {
-    int r;
-    CHECK_BARRIER(b_);
+    int r = barrier_ref(b_);
+    if(r) return r;
+    
     barrier_t *b = (barrier_t *)*b_;
 
-    if ((r = pthread_mutex_lock(&b->m))) return EINVAL;
+    if ((r = pthread_mutex_lock(&b->m))) return  barrier_unref(b_,EINVAL);
 
     while (b->total > _PTHREAD_BARRIER_FLAG) {
         /* Wait until everyone exits the barrier */
         r = pthread_cond_wait(&b->c, &b->m);
         if (r) {
             pthread_mutex_unlock(&b->m);
-            return EINVAL;
+            return barrier_unref(b_,EINVAL);
         }
-
     }
 
     /* Are we the first to enter? */
@@ -84,17 +84,17 @@ int pthread_barrier_wait(pthread_barrier_t *b_)
         r = pthread_cond_broadcast(&b->c);
         pthread_mutex_unlock(&b->m);
         if (r) {
-            return EINVAL;
+            return barrier_unref(b_,EINVAL);
         }
 
-        return 1;
+        return barrier_unref(b_,PTHREAD_BARRIER_SERIAL_THREAD);
     } else {
         while (b->total < _PTHREAD_BARRIER_FLAG) {
             /* Wait until enough threads enter the barrier */
             r = pthread_cond_wait(&b->c, &b->m);
             if (r) {
                 pthread_mutex_unlock(&b->m);
-                return EINVAL;
+                return barrier_unref(b_,EINVAL);
             }
         }
 
@@ -106,10 +106,10 @@ int pthread_barrier_wait(pthread_barrier_t *b_)
         }
 
         if (pthread_mutex_unlock(&b->m) || r) {
-            return EINVAL;
+            return barrier_unref(b_,EINVAL);
         }
-    }
-    return 0;
+   }
+   return barrier_unref(b_,0);
 }
 
 int pthread_barrierattr_init(void **attr)

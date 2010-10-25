@@ -6,12 +6,14 @@
 #include "mutex.h"
 #include "rwlock.h"
 #include "cond.h"
+#include "barrier.h"
 #include "ref.h"
 #include "misc.h"
 
 static spin_t mutex_global = {0,LIFE_SPINLOCK,0};
 static spin_t rwl_global = {0,LIFE_SPINLOCK,0};
 static spin_t cond_global = {0,LIFE_SPINLOCK,0};
+static spin_t barrier_global = {0,LIFE_SPINLOCK,0};
 
 inline int mutex_unref(volatile pthread_mutex_t *m, int r)
 {
@@ -308,6 +310,69 @@ inline int cond_ref_init(volatile pthread_cond_t *cond )
     }
 
     _spin_lite_unlock(&cond_global);
+    return r;
+}
+
+
+inline int barrier_unref(volatile pthread_barrier_t *barrier, int res)
+{
+    _spin_lite_lock(&barrier_global);
+     ((barrier_t *)*barrier)->busy--;
+    _spin_lite_unlock(&barrier_global);
+    return res;
+}
+
+inline int barrier_ref(volatile pthread_barrier_t *barrier)
+{
+    int r = 0;
+    _spin_lite_lock(&barrier_global);
+
+    if (!barrier || !*barrier) r = EINVAL;
+    else {
+        ((barrier_t *)*barrier)->busy ++;
+    }
+
+    _spin_lite_unlock(&barrier_global);
+    if (!r)assert(((barrier_t *)*barrier)->valid == LIFE_BARRIER);
+
+    return r;
+}
+
+inline int barrier_ref_destroy(volatile pthread_barrier_t *barrier, pthread_barrier_t *bDestroy )
+{
+    int r = 0;
+
+    *bDestroy = NULL;
+    if (_spin_lite_trylock(&barrier_global)) return EBUSY;
+    
+    if (!barrier || !*barrier) r = EINVAL;
+    else {
+        barrier_t *b_ = (barrier_t *)*barrier;
+        if (b_->valid != LIFE_BARRIER) r = EINVAL;
+        else if (b_->busy) r = EBUSY;
+        else {
+            *bDestroy = *barrier;
+            *barrier = NULL;
+        }
+    }
+
+    _spin_lite_unlock(&barrier_global);
+    return r;
+}
+
+inline int barrier_ref_init(volatile pthread_barrier_t *barrier )
+{
+    int r = 0;
+
+    _spin_lite_lock(&barrier_global);
+    
+    if (!barrier)  r = EINVAL;
+    else if (*barrier) {
+        barrier_t *b_ = (barrier_t *)*barrier;
+        if (b_->valid == LIFE_BARRIER) r = EBUSY;
+    }
+
+    _spin_lite_unlock(&barrier_global);
     return r;
 }
 

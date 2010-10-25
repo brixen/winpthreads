@@ -25,5 +25,11 @@ inline int cond_ref_destroy(volatile pthread_cond_t *cond, pthread_cond_t *cDest
 inline int cond_ref_init(volatile pthread_cond_t *cond );
 /* to be used in barriers */
 #define cond_ref_ext    cond_ref
+
+inline int barrier_unref(volatile pthread_barrier_t *barrier, int res);
+inline int barrier_ref(volatile pthread_barrier_t *barrier);
+inline int barrier_ref_destroy(volatile pthread_barrier_t *barrier, pthread_barrier_t *bDestroy );
+inline int barrier_ref_init(volatile pthread_barrier_t *barrier );
+
 #endif
 
