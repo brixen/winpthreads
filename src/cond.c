@@ -240,10 +240,10 @@ int pthread_cond_wait (pthread_cond_t *c,
 #else /*default USE_COND_Semaphore */
     DWORD dwr;
 
-    pthread_mutex_unlock(external_mutex);
     EnterCriticalSection (&_c->waiters_count_lock_);
     _c->waiters_count_++;
     LeaveCriticalSection (&_c->waiters_count_lock_);
+    pthread_mutex_unlock(external_mutex);
     dwr = WaitForSingleObject(_c->sema_, INFINITE);
     switch (dwr) {
     case WAIT_TIMEOUT:
@@ -259,10 +259,10 @@ int pthread_cond_wait (pthread_cond_t *c,
         /*We can only return EINVAL though it might not be posix compliant  */
         r = EINVAL;
     }
+    pthread_mutex_lock(external_mutex);
     EnterCriticalSection (&_c->waiters_count_lock_);
     _c->waiters_count_--;
     LeaveCriticalSection (&_c->waiters_count_lock_);
-    pthread_mutex_lock(external_mutex);
 
 #endif /* USE_COND_SignalObjectAndWait */
     return cond_unref_wait(c,mutex_unref(external_mutex,r));
@@ -353,10 +353,10 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     }
 
 #else /*default USE_COND_Semaphore */
-    pthread_mutex_unlock(external_mutex);
     EnterCriticalSection (&_c->waiters_count_lock_);
     _c->waiters_count_++;
     LeaveCriticalSection (&_c->waiters_count_lock_);
+    pthread_mutex_unlock(external_mutex);
 
     dwr = _pthread_rel_time_in_ms(t);
     dwr = WaitForSingleObject(_c->sema_, dwr);
@@ -374,10 +374,10 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
         /*We can only return EINVAL though it might not be posix compliant  */
         r = EINVAL;
     }
+    pthread_mutex_lock(external_mutex);
     EnterCriticalSection (&_c->waiters_count_lock_);
     _c->waiters_count_--;
     LeaveCriticalSection (&_c->waiters_count_lock_);
-    pthread_mutex_lock(external_mutex);
 
 #endif /* USE_COND_SignalObjectAndWait */
     return cond_unref_wait(c,mutex_unref(external_mutex,r));
