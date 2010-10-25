@@ -222,8 +222,11 @@ inline int cond_unref_wait(volatile pthread_cond_t *cond, int res)
 {
     _spin_lite_lock(&cond_global);
     cond_t *c_ = (cond_t *)*cond;
-    c_->bound = NULL;
+
     c_->busy--;
+    if (!c_->busy) {
+        c_->bound = NULL;
+    }
     _spin_lite_unlock(&cond_global);
     return res;
 }
