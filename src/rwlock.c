@@ -121,9 +121,9 @@ int pthread_rwlock_destroy (pthread_rwlock_t *rwlock_)
 int pthread_rwlock_init (pthread_rwlock_t *rwlock_, const pthread_rwlockattr_t *attr)
 {
     int r = rwl_ref_init(rwlock_);
-     if(r) return r;
+    if(r) return r;
 
-     rwlock_t *rwlock;
+    rwlock_t *rwlock;
 
     if ( !(rwlock = (pthread_rwlock_t)calloc(1, sizeof(*rwlock))) ) {
         return ENOMEM; 
