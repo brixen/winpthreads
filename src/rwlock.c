@@ -101,7 +101,7 @@ int pthread_rwlock_destroy (pthread_rwlock_t *rwlock_)
         /* Could this happen? */
         *rwlock_ = rDestroy;
         pthread_mutex_unlock (&rwlock->m);
-        return rwl_unref(rwlock_,EBUSY);
+        return EBUSY;
     }
 
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), r);
