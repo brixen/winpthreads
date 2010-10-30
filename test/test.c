@@ -53,6 +53,9 @@ void *hello(void *arg)
 {
     parm *p=(parm *)arg;
     printf("Hello from node %d\n", p->id);
+    pthread_exit(NULL);
+    printf("Not reached from node %d\n", p->id);
+     pthread_exit(NULL);
     return (NULL);
 }
 
@@ -149,11 +152,17 @@ void *mutex_threadfunc(void *parm)
 {
    int   rc;
    int d;
-   int tid = pthread_self()->tid;
-   printf("Thread %d: Entered\n", tid);
+   int tid = 0;
+   printf("----------------------------\n");
+   //Sleep(1000);
+    //mutex_print(&mutex,"Lock T A");
     mutex_print(&mutex,"Lock T");
+   printf("----------------------------\n");
+   //Sleep(1000);
+   //printf("Thread %d: Entered\n", tid);
+
 rc = pthread_mutex_lock(&mutex);
-   mutex_print(&mutex,"Locked T");
+   //mutex_print(&mutex,"Locked T");
    d= sharedData;
    checkResults("pthread_mutex_lock()\n", rc);
    /********** Critical Section *******************/
@@ -167,9 +176,9 @@ rc = pthread_mutex_lock(&mutex);
           tid);
    d -= (sharedData-1);
    /********** Critical Section *******************/
-   mutex_print(&mutex,"UnLock T");
+   //mutex_print(&mutex,"UnLock T");
    rc = pthread_mutex_unlock(&mutex);
-   mutex_print(&mutex,"UnLocked T");
+   //mutex_print(&mutex,"UnLocked T");
    checkResults("pthread_mutex_unlock()\n", rc);
    if (d) {
         printf("FAILED Thread %d: check sharedData=%d instead of 0\n", tid, d);
@@ -517,18 +526,57 @@ int mutex_main_raced(void)
     return 0;
 }
 
+ 
+int mutex_main_static(void)
+{
+    pthread_t             thread[MUTEX_NTHREADS];
+    int                   rc=0;
+    int                   i;
+    struct timespec   ts;
+
+    printf("mutex_main_static: Hold Mutex to prevent access to shared data o=%d\n",0);
+    mutex_print(&mutex,"Lock");
+    rc = pthread_mutex_lock(&mutex);
+    mutex_print(&mutex,"Locked");
+    printf("Mutex inited type=%d o=%d\n", ((mutex_t *)mutex)->type,GET_OWNER(((mutex_t *)mutex)));
+    printf("Unlock Mutex to prevent access to shared data\n");
+    checkResults("pthread_mutex_lock()\n", rc);
+    rc = pthread_mutex_unlock(&mutex);
+    mutex_print(&mutex,"UnLocked");
+    printf("Unlocked Mutex to prevent access to shared data o=%d\n",GET_OWNER(((mutex_t *)mutex)));
+    checkResults("pthread_mutex_unlock()\n",rc);
+    printf("Hold Mutex to prevent access to shared data 2\n");
+    rc = pthread_mutex_lock(&mutex);
+    checkResults("pthread_mutex_lock() 2\n", rc);
+    mutex_print(&mutex,"Locked 2");
+    printf("Create/start threads\n");
+    for (i=0; i<MUTEX_NTHREADS; ++i) {
+        rc = pthread_create(&thread[i], NULL, mutex_threadfunc, NULL);
+        checkResults("pthread_create()\n", rc);
+    }
+
+    printf("Wait a bit until we are 'done' with the shared data\n");
+    Sleep(3000);
+    printf("Unlock shared data\n");
+    rc = pthread_mutex_unlock(&mutex);
+    mutex_print(&mutex,"UnLocked 2");
+    checkResults("pthread_mutex_unlock()\n",rc);
+    return 0;
+}
 int mutex_main(void)
 {
     pthread_t             *thread;
     int                   rc=0;
     int                   i;
 
-    int tid = pthread_self()->tid;
-    thread = (pthread_t *)calloc(MUTEX_NTHREADS, sizeof(pthread_t));
+    int tid = 0;
+     mutex_print_set(1);
+     thread = (pthread_t *)calloc(MUTEX_NTHREADS, sizeof(pthread_t));
      printf("Main thread %d: Entered\n", tid);
     printf("Enter Testcase - mutex_main %s\n",testType);
     if (strcmp(testType,"static") == 0) {
         mutex = PTHREAD_DEFAULT_MUTEX_INITIALIZER;
+        return mutex_main_static();
     } else if (strcmp(testType,"staticN") == 0) {
         mutex = PTHREAD_NORMAL_MUTEX_INITIALIZER;
     } else if (strcmp(testType,"staticND") == 0) {
@@ -558,7 +606,7 @@ int mutex_main(void)
     printf("Unlock Mutex to prevent access to shared data\n");
     checkResults("pthread_mutex_lock()\n", rc);
     rc = pthread_mutex_unlock(&mutex);
-        mutex_print(&mutex,"UnLocked");
+    mutex_print(&mutex,"UnLocked");
     printf("Unlocked Mutex to prevent access to shared data o=%d\n",GET_OWNER(((mutex_t *)mutex)));
     checkResults("pthread_mutex_unlock()\n",rc);
     printf("Hold Mutex to prevent access to shared data 2\n");
@@ -566,7 +614,7 @@ int mutex_main(void)
     checkResults("pthread_mutex_lock() 2\n", rc);
     mutex_print(&mutex,"Locked 2");
     printf("Create/start threads\n");
-    for (i=0; i<10; ++i) {
+    for (i=0; i<MUTEX_NTHREADS; ++i) {
         rc = pthread_create(&thread[i], NULL, mutex_threadfunc, NULL);
         checkResults("pthread_create()\n", rc);
     }
@@ -579,7 +627,7 @@ int mutex_main(void)
     checkResults("pthread_mutex_unlock()\n",rc);
 
     printf("Wait for the threads to complete, and release their resources\n");
-    for (i=0; i <10; ++i) {
+    for (i=0; i <MUTEX_NTHREADS; ++i) {
         rc = pthread_join(thread[i], NULL);
         checkResults("pthread_join()\n", rc);
     }
@@ -1081,9 +1129,9 @@ int rwlock_main(void)
 }
 
 /*================================================================================*/
-#define BARRIER_NTHREADS 20
+#define BARRIER_NTHREADS 50
 
-#define BARRIER_ROUNDS 20
+#define BARRIER_ROUNDS 50
 
 static pthread_barrier_t barriers[BARRIER_NTHREADS];
 
@@ -1160,7 +1208,7 @@ void *barrier_Thread(void *arg)
             /* the following printf can make bugs go away - timing dependend */
             /* without this printf the test hangs here */
             /* try USE_MUTEX_CriticalSection + USE_COND_Semaphore */
-            /* printf ("Wait for the rest again continue %d\n",j); */
+            //printf ("Wait for the rest again continue %d\n",j);
     
             /* Now we can check whether exactly one thread was serializing.  */
             if (nr == 0 && serial[j] != 1)
@@ -1260,6 +1308,7 @@ void thread(void)
         pthread_join(threads[i],NULL);
     }
     free(p);
+     pthread_exit(NULL);
 }
 
 int main(int argc, char * argv[]) {
@@ -1276,6 +1325,7 @@ int main(int argc, char * argv[]) {
     {
         strcpy(testType, argv[2]);
     }
+
     strcpy(name, argv[1]); 
     printf ("Threads test: %s\n",name);
     printf ("P size: %d %d\n",SIZE_MAX>UINT_MAX,sizeof(struct timespec ));
@@ -1289,5 +1339,6 @@ int main(int argc, char * argv[]) {
     else if (strcmp(name, "mutex") == 0) mutex_main();
     else if (strcmp(name, "spinlock") == 0) spinlock_main();
     else printf ("Unknown test name '%s'\n",name);
-    return 0;
+ 
+        return 0;
 }
