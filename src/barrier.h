@@ -12,8 +12,8 @@
 typedef struct barrier_t barrier_t;
 struct barrier_t
 {
-    int busy;
     int valid;
+    int busy;
     int count;
     int total;
     pthread_mutex_t m;

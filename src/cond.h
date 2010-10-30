@@ -64,4 +64,9 @@ struct cond_t
 };
 
 inline int cond_static_init(volatile pthread_rwlock_t *r);
+
+void cond_print_set(int state, FILE *f);
+
+void cond_print(volatile pthread_cond_t *c, char *txt);
+
 #endif

@@ -11,6 +11,36 @@
 
 #include "misc.h"
 
+static int print_state = 0;
+static FILE *fo = NULL;
+
+void cond_print_set(int state, FILE *f)
+{
+    if (f) fo = f;
+    if (!fo) fo = stdout;
+    print_state = state;
+}
+
+void cond_print(volatile pthread_cond_t *c, char *txt)
+{
+    if (!print_state) return;
+    cond_t *c_ = (cond_t *)*c;
+    if (c_ == NULL) {
+        fprintf(fo,"C%p %d %s\n",*c,(int)GetCurrentThreadId(),txt);
+    } else {
+        fprintf(fo,"C%p %d V=%0X B=%d b=%p w=%ld %s\n",
+            *c, 
+            (int)GetCurrentThreadId(), 
+            (int)c_->valid, 
+            (int)c_->busy,
+            c_->bound,
+            c_->waiters_count_,
+            txt
+            );
+    }
+}
+
+
 inline int cond_static_init(volatile pthread_cond_t *c)
 {
     pthread_cond_t c_tmp=NULL, *c_replaced;

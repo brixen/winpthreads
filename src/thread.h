@@ -14,6 +14,7 @@ struct _pthread_cleanup
     _pthread_cleanup *next;
 };
 
+typedef struct _pthread_v _pthread_v;
 struct _pthread_v
 {
     void *ret_arg;

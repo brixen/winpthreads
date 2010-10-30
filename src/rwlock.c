@@ -7,7 +7,7 @@
 #include "spinlock.h"
 #include "misc.h"
 
-static int print_state = 1;
+static int print_state = 0;
 void rwl_print_set(int state)
 {
     print_state = state;
@@ -444,10 +444,8 @@ int pthread_rwlock_unlock (pthread_rwlock_t *rwlock_)
     
     if (s == RTL_SRWLOCK_OWNED){
         /* Known to be an exclusive lock */
-        printf("A ReleaseSRWLockExclusive rwlock->treaders_count=%ld\n",rwlock->treaders_count);
         ReleaseSRWLockExclusive(&rwlock->l);
 #ifdef USE_RWLOCK_SRWLock_Sync
-        printf("B ReleaseSRWLockExclusive rwlock->treaders_count=%ld\n",rwlock->treaders_count);
         if (rwlock->treaders_count) {
             /* favour readers */
             ReleaseSemaphore(rwlock->semTimedR, rwlock->treaders_count, NULL);
@@ -457,10 +455,8 @@ int pthread_rwlock_unlock (pthread_rwlock_t *rwlock_)
 #endif
     } else {
         /* A shared unlock will work */
-        printf("A ReleaseSRWLockShared rwlock->treaders_count=%ld\n",rwlock->treaders_count);
         ReleaseSRWLockShared(&rwlock->l);
 #ifdef USE_RWLOCK_SRWLock_Sync
-        printf("B ReleaseSRWLockShared rwlock->treaders_count=%ld\n",rwlock->treaders_count);
         if ( (s>16) && !((s-RTL_SRWLOCK_OWNED)%16) ) {
             /* unlock by shared reader: */
             if (s == 16+RTL_SRWLOCK_OWNED) {
