@@ -19,6 +19,15 @@
           (fprintf(stderr, "Assertion failed: (%s), file %s, line %d\n", \
                    #e, __FILE__, (int) __LINE__), exit(1), 0))
 
+# define fixme(e) \
+   ((e) ? ((ASSERT_TRACE) ? fprintf(stderr, \
+                                    "Assertion succeeded: (%s), file %s, line %d\n", \
+                        #e, __FILE__, (int) __LINE__), \
+                                fflush(stderr) : \
+                             0) : \
+          (fprintf(stderr, "FIXME: (%s), file %s, line %d\n", \
+                   #e, __FILE__, (int) __LINE__), 0, 0))
+
 #endif
 
 #define UINT2PTR(x)								((void *)(uintptr_t)(x))
@@ -46,6 +55,8 @@ typedef long LONGBAG;
     if (!(o)) return e; \
     if (!((o)->h) || (((o)->h) == INVALID_HANDLE_VALUE) || !GetHandleInformation(((o)->h), &dwFlags)) \
         return e; }
+
+#define VALID(x)    if (!(p)) return EINVAL;
 
 /* ms can be 64 bit, solve wrap-around issues: */
 #define dwMilliSecs(ms)		((ms) >= INFINITE ? INFINITE : (DWORD)(ms))
