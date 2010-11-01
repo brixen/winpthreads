@@ -8,6 +8,32 @@ static int scnt = 0;
 static LONG bscnt = 0;
 static int scntMax = 0;
 
+static inline int spinlock_static_init(volatile pthread_spinlock_t *s )
+{
+    pthread_spinlock_t s_tmp=NULL;
+    spin_t *si, *s_replaced;
+
+    if ( PTHREAD_SPINLOCK_INITIALIZER != (pthread_spinlock_t)(si = (spin_t *)*s) ) {
+        /* Assume someone crept in between: */
+        return 0;
+    }
+
+    int r = pthread_spin_init(&s_tmp, NULL);
+    if (!r) {
+        s_replaced = (spin_t *)InterlockedCompareExchangePointer(
+            (PVOID *)s, 
+            s_tmp,
+            si);
+        if (s_replaced != si) {
+            /* someone crept in between: */
+            pthread_spin_destroy(&s_tmp);
+            /* But it could also be destroyed already: */
+            if (!s_replaced) r = EINVAL;
+        }
+    }
+    return r;
+}
+
 int pthread_spin_init(pthread_spinlock_t *l, int pshared)
 {
     spin_t *_l;
@@ -48,6 +74,7 @@ int pthread_spin_destroy(pthread_spinlock_t *l)
 /* No-fair spinlock due to lack of knowledge of thread number.  */
 int pthread_spin_lock(pthread_spinlock_t *l)
 {
+    INIT_SPINLOCK(l);
     CHECK_SPINLOCK(l);
     spin_t *_l = (spin_t *)*l;
     CHECK_DEADLK_SL(_l);
@@ -74,6 +101,7 @@ int pthread_spin_trylock(pthread_spinlock_t *l)
 {
     int r = 0;
 
+    INIT_SPINLOCK(l);
     CHECK_SPINLOCK(l);
     spin_t *_l = (spin_t *)*l;
 

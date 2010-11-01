@@ -44,6 +44,9 @@
 #define CHECK_PERM_SL(l)
 #endif
 
+#define INIT_SPINLOCK(s)  { int r; \
+    if (PTHREAD_SPINLOCK_INITIALIZER == *s) { if ((r = spinlock_static_init(s))) return r; }}
+
 typedef struct spin_t spin_t;
 struct spin_t
 {
