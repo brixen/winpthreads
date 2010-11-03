@@ -41,12 +41,13 @@ Module testing:
 ---------------
 
 Sometimes you want to test, debug and modify a single test, say once2.c:
-1. Copy the file to the debug test dir:
+1. Copy test.h to the debug test dir:
+   $ cp test.h ../test
+2. Copy the file to the debug test dir:
    $ cp once2.c ../test
-2. Enter the debug test dir:
+3. Enter the debug test dir:
    $ cd ../test
-3. Add once2.c to the makefile
-4. Build and run it:
+4. Add once2.c to the makefile
+5. Build and run it:
    $ make once2.exe
    $ ./once2.exe
-
