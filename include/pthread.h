@@ -51,6 +51,9 @@
 /* Compatibility stuff: */
 #define RWLS_PER_THREAD						8
 
+/* w32 tests: */
+#define PW32_COMPAT		                    1 /* for the w32 test-suite */
+
 /* contention analysis, etc: */
 #define USE_SPINLOCK_DBG					1
 /* deadlock detection is optional for spinlocks */
@@ -146,14 +149,43 @@
 #define PTHREAD_PROCESS_SHARED 0
 #define PTHREAD_PROCESS_PRIVATE 1
 
-/* Extensions to make more w32 tests happy (LinuxThreads): */
+#ifdef PW32_COMPAT
+/* Extensions to make more w32 tests happy (non posix): */
 #define PTHREAD_MUTEX_FAST_NP		PTHREAD_MUTEX_NORMAL
 #define PTHREAD_MUTEX_TIMED_NP		PTHREAD_MUTEX_FAST_NP
 #define PTHREAD_MUTEX_ADAPTIVE_NP	PTHREAD_MUTEX_FAST_NP
 #define PTHREAD_MUTEX_ERRORCHECK_NP	PTHREAD_MUTEX_ERRORCHECK
 #define PTHREAD_MUTEX_RECURSIVE_NP	PTHREAD_MUTEX_RECURSIVE
+/* Features for pthread_win32_test_features_np: */
+#define PTW32_SYSTEM_INTERLOCKED_COMPARE_EXCHANGE   1
+#define PTW32_ALERTABLE_ASYNC_CANCEL                2
 
+#define pthread_getw32threadhandle_np(self)     ((self)->h)
 void * pthread_timechange_handler_np(void * dummy);
+int pthread_delay_np (const struct timespec *interval);
+int pthread_num_processors_np(void);
+int pthread_win32_test_features_np(int mask);
+
+/*
+ * gmtime(tm) and localtime(tm) return 0 if tm represents
+ * a time prior to 1/1/1970.
+ */
+#define gmtime_r( _clock, _result ) \
+        ( gmtime( (_clock) ) \
+             ? (*(_result) = *gmtime( (_clock) ), (_result) ) \
+             : (0) )
+
+#define localtime_r( _clock, _result ) \
+        ( localtime( (_clock) ) \
+             ? (*(_result) = *localtime( (_clock) ), (_result) ) \
+             : (0) )
+
+#define rand_r( _seed ) \
+        ( _seed == _seed? rand() : rand() )
+
+
+#endif
+
 
 #define PTHREAD_BARRIER_SERIAL_THREAD 1
 
@@ -200,6 +232,13 @@ struct itimerspec {
 };
 #endif
 
+/* FIXME: move to sched.h eventually, along with some functions below: */
+struct sched_param {
+  int sched_priority ;
+};
+
+# define sched_yield()  Sleep(0)
+
 typedef void	*pthread_spinlock_t;
 typedef void	*pthread_mutex_t;
 typedef void	*pthread_cond_t;
@@ -221,6 +260,7 @@ typedef void	*pthread_barrier_t;
 #define PTHREAD_DEFAULT_MUTEX_INITIALIZER		PTHREAD_NORMAL_MUTEX_INITIALIZER
 #define PTHREAD_COND_INITIALIZER				(pthread_cond_t *)GENERIC_INITIALIZER
 #define PTHREAD_RWLOCK_INITIALIZER				(pthread_rwlock_t *)GENERIC_INITIALIZER
+#define PTHREAD_SPINLOCK_INITIALIZER			(pthread_spinlock_t *)GENERIC_INITIALIZER
 
 typedef struct pthread_attr_t pthread_attr_t;
 struct pthread_attr_t
@@ -231,6 +271,11 @@ struct pthread_attr_t
 };
 
 void (**_pthread_key_dest)(void *);
+int pthread_key_create(pthread_key_t *key, void (* dest)(void *));
+int pthread_key_delete(pthread_key_t key);
+void *pthread_getspecific(pthread_key_t key);
+int pthread_setspecific(pthread_key_t key, const void *value);
+
 pthread_t pthread_self(void);
 int pthread_once(pthread_once_t *o, void (*func)(void));
 void pthread_testcancel(void);

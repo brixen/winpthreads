@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <stdio.h>
 #include <signal.h>
 #include "pthread.h"
 #include "thread.h"
@@ -11,10 +12,9 @@ static int _pthread_concur;
 static pthread_once_t _pthread_tls_once;
 static DWORD _pthread_tls;
 
-/* FIXME Note initializer is zero, so this works */
-static pthread_rwlock_t _pthread_key_lock;
-static unsigned long _pthread_key_max;
-static unsigned long _pthread_key_sch;
+static pthread_rwlock_t _pthread_key_lock = PTHREAD_RWLOCK_INITIALIZER;
+static unsigned long _pthread_key_max=0L;
+static unsigned long _pthread_key_sch=0L;
 
 static void _pthread_once_cleanup(pthread_once_t *o)
 {
@@ -60,6 +60,36 @@ static int _pthread_once_raw(pthread_once_t *o, void (*func)(void))
 void * pthread_timechange_handler_np(void * dummy)
 {
     return 0;
+}
+
+int pthread_delay_np (const struct timespec *interval)
+{
+    pthread_testcancel();
+    Sleep(dwMilliSecs(_pthread_time_in_ms_from_timespec(interval)));
+    return 0;
+}
+
+int pthread_num_processors_np(void) 
+{
+    int r = 0; 
+	DWORD_PTR ProcessAffinityMask, SystemAffinityMask;
+
+	if (GetProcessAffinityMask(GetCurrentProcess(), &ProcessAffinityMask, &SystemAffinityMask)) {
+	    for(; ProcessAffinityMask != 0; ProcessAffinityMask>>=1){
+            r += ProcessAffinityMask&1;
+        }
+    }
+	return r ? r : 1; /* assume at least 1 */
+}
+
+/* half-stubbed version */
+BOOL pthread_win32_test_features_np(int mask)
+{
+    int r = 0;
+
+    r = (mask & PTW32_SYSTEM_INTERLOCKED_COMPARE_EXCHANGE); /* assume Win32 */
+    /* Not supporting PTW32_ALERTABLE_ASYNC_CANCEL for now, just say it isn't there */
+    return r;
 }
 
 pthread_t pthread_self(void);
@@ -306,7 +336,7 @@ pthread_t pthread_self(void)
         t->tid = GetCurrentThreadId();
 
         /* Save for later */
-        TlsSetValue(_pthread_tls, t);
+        if (!TlsSetValue(_pthread_tls, t)) abort();
 
         if (setjmp(t->jb))
         {
