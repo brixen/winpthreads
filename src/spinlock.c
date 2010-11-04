@@ -41,13 +41,12 @@ int pthread_spin_init(pthread_spinlock_t *l, int pshared)
 
     if (!l) return EINVAL; 
     if (pshared != PTHREAD_PROCESS_SHARED) return ENOTSUP; 
-    if ( !(_l = (pthread_spinlock_t)malloc(sizeof(*_l))) ) {
+    if ( !(_l = (pthread_spinlock_t)calloc(1, sizeof(*_l))) ) {
         return ENOMEM; 
     }
 
     _l->valid = LIFE_SPINLOCK;
-    _l->l = 0;
-    *l = _l;
+     *l = _l;
     return 0;
 }
 
