@@ -86,7 +86,7 @@ inline int mutex_ref_destroy(volatile pthread_mutex_t *m, pthread_mutex_t *mDest
     /* also considered as busy, any concurrent access prevents destruction: */
     if (_spin_lite_trylock(&mutex_global)) return EBUSY;
     
-    if (!m || !*m || ((mutex_t *)*m)->valid != LIFE_MUTEX) r = EINVAL;
+    if (!m || !*m) r = EINVAL;
     else {
         mutex_t *m_ = (mutex_t *)*m;
         if (STATIC_INITIALIZER(*m)) *m = NULL;
@@ -170,7 +170,7 @@ inline int rwl_ref_destroy(volatile pthread_rwlock_t *rwl, pthread_rwlock_t *rDe
     *rDestroy = NULL;
     if (_spin_lite_trylock(&rwl_global)) return EBUSY;
     
-    if (!rwl || !*rwl || ((rwlock_t *)*rwl)->valid != LIFE_RWLOCK) r = EINVAL;
+    if (!rwl || !*rwl) r = EINVAL;
     else {
         rwlock_t *r_ = (rwlock_t *)*rwl;
         if (STATIC_RWL_INITIALIZER(*rwl)) *rwl = NULL;
@@ -263,7 +263,7 @@ inline int cond_ref_destroy(volatile pthread_cond_t *cond, pthread_cond_t *cDest
     *cDestroy = NULL;
     if (_spin_lite_trylock(&cond_global)) return EBUSY;
     
-    if (!cond || !*cond || ((cond_t *)*cond)->valid != LIFE_COND) r = EINVAL;
+    if (!cond || !*cond) r = EINVAL;
     else {
         cond_t *c_ = (cond_t *)*cond;
         if (STATIC_COND_INITIALIZER(*cond)) *cond = NULL;
