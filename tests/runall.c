@@ -14,7 +14,6 @@ int main(int argc, char * argv[])
     char fnob[100];
     char cmd[100];
     char *e;
-    int type;
     struct stat st;
     DIR *dir;
     struct dirent *ent;
@@ -26,10 +25,8 @@ int main(int argc, char * argv[])
     dir = opendir (argv[1]);
     if (dir != NULL) {
         while ((ent = readdir (dir)) != NULL) {
-            type = 0;
-            strcpy(b,  ent->d_name);
-            printf ("%s\n",b);
-            if (strstr(b,"runall.c")) {
+             strcpy(b,  ent->d_name);
+             if (strstr(b,"runall.c")) {
                 /* skip myself */
                 continue;
             }
@@ -37,7 +34,6 @@ int main(int argc, char * argv[])
             if (e) {
                 *e ++ = '\0';
                 if (strcmp(e,"c")==0) {
-                    type = 1;
                     sprintf(fexe,"%s.exe",b);
                     sprintf(fpass,"%s.pass",b);
                     sprintf(ffail,"%s.fail",b);

@@ -36,6 +36,7 @@ Procedure:
    - .pass : the test has passed (exited with 0).
    - .fail : the test has failed (exited with != 0).
    - .x : no .exe found. Probably the compile has failed.
+   Note that when a test crashes, a .fail output will be generated, even without failed asserts.
 
 Module testing:
 ---------------
