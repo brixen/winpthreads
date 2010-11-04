@@ -5,6 +5,9 @@
 #include <setjmp.h>
 #include "rwlock.h"
 
+#define LIFE_THREAD 0xBAB1F00D
+#define DEAD_THREAD 0xDEADBEEF
+
 /* private non-public types.  */
 typedef struct _pthread_cleanup _pthread_cleanup;
 struct _pthread_cleanup
@@ -17,6 +20,7 @@ struct _pthread_cleanup
 typedef struct _pthread_v _pthread_v;
 struct _pthread_v
 {
+    unsigned int valid;   
     void *ret_arg;
     void *(* func)(void *);
     _pthread_cleanup *clean;
@@ -44,5 +48,8 @@ struct _pthread_v
     (pthread_self()->clean = _pthread_cup.next, (E?_pthread_cup.func((pthread_once_t *)_pthread_cup.arg):0));}
 
 int _pthread_tryjoin(pthread_t t, void **res);
+
+void thread_print_set(int state);
+void thread_print(volatile pthread_t t, char *txt);
 
 #endif

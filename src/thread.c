@@ -16,6 +16,27 @@ static pthread_rwlock_t _pthread_key_lock = PTHREAD_RWLOCK_INITIALIZER;
 static unsigned long _pthread_key_max=0L;
 static unsigned long _pthread_key_sch=0L;
 
+static int print_state = 0;
+void thread_print_set(int state)
+{
+    print_state = state;
+}
+
+void thread_print(volatile pthread_t t, char *txt)
+{
+    if (!print_state) return;
+    if (t == NULL) {
+        printf("T%p %d %s\n",t,(int)GetCurrentThreadId(),txt);
+    } else {
+        printf("T%p %d V=%0X H=%p %s\n",
+            t, 
+            (int)GetCurrentThreadId(), 
+            (int)t->valid, 
+            t->h,
+            txt
+            );
+    }
+}
 static void _pthread_once_cleanup(pthread_once_t *o)
 {
     *o = 0;
@@ -341,7 +362,11 @@ pthread_t pthread_self(void)
         if (setjmp(t->jb))
         {
             /* Make sure we free ourselves if we are detached */
-            if (!t->h) free(t);
+            if (!t->h) {
+                t->valid = DEAD_THREAD;
+                free(t);
+                t = NULL;
+            }
 
             /* Time to die */
             _endthreadex(0);
@@ -589,7 +614,11 @@ int pthread_create_wrapper(void *args)
     }
 
     /* Make sure we free ourselves if we are detached */
-    if (!tv->h) free(tv);
+    if (!tv->h) {
+        tv->valid = DEAD_THREAD;
+        free(tv);
+        tv = NULL;
+    }
 
     return 0;
 }
@@ -610,6 +639,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     tv->func = func;
     tv->p_state = PTHREAD_DEFAULT_ATTR;
     tv->h = (HANDLE) -1;
+    tv->valid = LIFE_THREAD;
  
     if (attr)
     {
@@ -641,15 +671,18 @@ int pthread_join(pthread_t t, void **res)
     struct _pthread_v *tv = t;
 
     CHECK_THREAD(tv);
+    thread_print(t,"1 pthread_join");
     if (pthread_equal(pthread_self(), t)) return EDEADLK;
 
     pthread_testcancel();
 
     WaitForSingleObject(tv->h, INFINITE);
     CloseHandle(tv->h);
+    thread_print(t,"2 pthread_join");
 
     /* Obtain return value */
     if (res) *res = tv->ret_arg;
+    thread_print(t,"3 pthread_join");
 
     free(tv);
 
