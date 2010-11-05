@@ -70,7 +70,7 @@ myfunc(void)
 void *
 mythread(void * arg)
 {
-   assert(pthread_once(&once[(int) arg], myfunc) == 0);
+   assert(pthread_once(&once[(int) (size_t) arg], myfunc) == 0);
    EnterCriticalSection(&numThreads.cs);
    numThreads.i++;   
    LeaveCriticalSection(&numThreads.cs);
@@ -91,7 +91,7 @@ main()
       once[j] = o;
 
       for (i = 0; i < NUM_THREADS; i++)
-        assert(pthread_create(&t[i][j], NULL, mythread, (void *) j) == 0);
+        assert(pthread_create(&t[i][j], NULL, mythread, (void *) (size_t) j) == 0);
     }
 
   for (j = 0; j < NUM_ONCE; j++)
