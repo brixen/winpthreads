@@ -54,7 +54,7 @@ void * wrfunc(void * arg)
   int result;
 
   result = pthread_rwlock_timedwrlock(&rwlock1, &abstime);
-  if ((int) arg == 1)
+  if ((int) (size_t) arg == 1)
     {
       assert(result == 0);
       Sleep(2000);
@@ -62,13 +62,13 @@ void * wrfunc(void * arg)
       assert(pthread_rwlock_unlock(&rwlock1) == 0);
       return ((void *) bankAccount);
     }
-  else if ((int) arg == 2)
+  else if ((int) (size_t) arg == 2)
     {
       assert(result == ETIMEDOUT);
-      return ((void *) 100);
+      return ((void *) (size_t) 100);
     }
 
-  return ((void *) -1);
+  return ((void *) (size_t) -1);
 }
 
 void * rdfunc(void * arg)
@@ -77,7 +77,7 @@ void * rdfunc(void * arg)
 
   assert(pthread_rwlock_timedrdlock(&rwlock1, &abstime) == ETIMEDOUT);
 
-  return ((void *) ba);
+  return ((void *) (size_t) ba);
 }
 
 int

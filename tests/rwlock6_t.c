@@ -55,7 +55,7 @@ void * wrfunc(void * arg)
   bankAccount += 10;
   assert(pthread_rwlock_unlock(&rwlock1) == 0);
 
-  return ((void *) bankAccount);
+  return ((void *) (size_t) bankAccount);
 }
 
 void * rdfunc(void * arg)
@@ -71,13 +71,13 @@ void * rdfunc(void * arg)
   abstime.tv_nsec = NANOSEC_PER_MILLISEC * currSysTime.millitm;
 
 
-  if ((int) arg == 1)
+  if ((int) (size_t) arg == 1)
     {
       abstime.tv_sec += 1;
       assert(pthread_rwlock_timedrdlock(&rwlock1, &abstime) == ETIMEDOUT);
       ba = 0;
     }
-  else if ((int) arg == 2)
+  else if ((int) (size_t) arg == 2)
     {
       abstime.tv_sec += 3;
       assert(pthread_rwlock_timedrdlock(&rwlock1, &abstime) == 0);
@@ -85,7 +85,7 @@ void * rdfunc(void * arg)
       assert(pthread_rwlock_unlock(&rwlock1) == 0);
     }
 
-  return ((void *) ba);
+  return ((void *) (size_t) ba);
 }
 
 int

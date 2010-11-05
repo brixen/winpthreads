@@ -194,7 +194,7 @@ main()
       assert(threadbag[i].self->h != NULL);
       assert(pthread_kill(threadbag[i].self, 0) == ESRCH);
 
-      fail = (result != (int) PTHREAD_CANCELED);
+      fail = (result != (int) (size_t) PTHREAD_CANCELED);
 
       if (fail)
 	{
