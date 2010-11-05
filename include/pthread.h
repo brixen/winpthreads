@@ -288,6 +288,7 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *l);
 int pthread_rwlock_timedrdlock(pthread_rwlock_t *l, struct timespec *ts);
 int pthread_rwlock_unlock(pthread_rwlock_t *l);
 int pthread_rwlock_tryrdlock(pthread_rwlock_t *l);
+int pthread_rwlock_trywrlock(pthread_rwlock_t *l);
 int pthread_rwlock_destroy (pthread_rwlock_t *l);
 
 int pthread_cond_init(pthread_cond_t *cv, pthread_condattr_t *a);
