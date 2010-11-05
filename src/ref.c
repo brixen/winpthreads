@@ -208,7 +208,10 @@ inline int cond_unref(volatile pthread_cond_t *cond, int res)
     _spin_lite_lock(&cond_global);
     cond_t *c_ = (cond_t *)*cond;
 
-    c_->busy--;
+    if (c_->valid != LIFE_COND)
+    	c_->busy = 0;
+    else if (c_->busy > 0)
+        c_->busy--;
     if (!c_->busy) {
         c_->bound = NULL;
     }

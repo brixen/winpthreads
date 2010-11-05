@@ -40,7 +40,7 @@ int pthread_spin_init(pthread_spinlock_t *l, int pshared)
     (void) pshared;
 
     if (!l) return EINVAL; 
-    if (pshared != PTHREAD_PROCESS_SHARED) return ENOTSUP; 
+    if (pshared != PTHREAD_PROCESS_SHARED && pshared != PTHREAD_PROCESS_PRIVATE) return ENOTSUP; 
     if ( !(_l = (pthread_spinlock_t)calloc(1, sizeof(*_l))) ) {
         return ENOMEM; 
     }

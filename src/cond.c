@@ -306,7 +306,8 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 
     cond_t *_c = (cond_t *)*c;
 
-    if ((r=mutex_ref_ext(external_mutex)))return cond_unref(c,r);
+    if ((r=mutex_ref_ext(external_mutex)) != 0)
+    	return cond_unref(c,r);
 
     pthread_testcancel();
 #if defined USE_COND_SignalObjectAndWait

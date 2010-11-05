@@ -355,6 +355,7 @@ pthread_t pthread_self(void)
                 t->valid = DEAD_THREAD;
                 free(t);
                 t = NULL;
+                /* TlsSetValue(_pthread_tls, NULL); */
             }
 
             /* Time to die */
@@ -615,19 +616,22 @@ int pthread_create_wrapper(void *args)
 
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
 {
-    struct _pthread_v *tv = (struct _pthread_v *)calloc(1,sizeof(struct _pthread_v));
+    struct _pthread_v *tv;
     size_t ssize = 0;
 
-    CHECK_PTR(th);
+    tv = (struct _pthread_v *)calloc(1,sizeof(struct _pthread_v));
 
     if (!tv) return EAGAIN;
 
-    *th = tv;
+    if (th)
+    	*th = tv;
 
     /* Save data in pthread_t */
     tv->ret_arg = arg;
     tv->func = func;
     tv->p_state = PTHREAD_DEFAULT_ATTR;
+    if (!th)
+      tv->p_state |= PTHREAD_CREATE_DETACHED;
     tv->h = (HANDLE) -1;
     tv->valid = LIFE_THREAD;
  

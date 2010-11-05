@@ -7,7 +7,7 @@
 # define ASSERT_TRACE 0
 #else
 # undef ASSERT_TRACE
-# define ASSERT_TRACE 1
+# define ASSERT_TRACE 0
 #endif
 
 # define assert(e) \
