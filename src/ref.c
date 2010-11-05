@@ -331,7 +331,8 @@ inline int barrier_ref(volatile pthread_barrier_t *barrier)
     return r;
 }
 
-inline int barrier_ref_destroy(volatile pthread_barrier_t *barrier, pthread_barrier_t *bDestroy )
+inline int
+barrier_ref_destroy(volatile pthread_barrier_t *barrier, pthread_barrier_t *bDestroy)
 {
     int r = 0;
 

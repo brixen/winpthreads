@@ -8,7 +8,9 @@ int pthread_barrier_destroy(pthread_barrier_t *b_)
 {
     pthread_barrier_t bDestroy;
     int r = barrier_ref_destroy(b_,&bDestroy);
-    if(r) return r;
+    
+    if (r)
+      return r;
 
     barrier_t *b = (barrier_t *)bDestroy;
     
@@ -30,30 +32,41 @@ int pthread_barrier_destroy(pthread_barrier_t *b_)
 
 }
 
-int pthread_barrier_init(pthread_barrier_t *b_, void *attr, unsigned int count)
+int
+pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
 {
-    int r = barrier_ref_init(b_);
-    if(r) return r;
+    barrier_t *b;
+    int r;
+
+    if (!count)
+      return EINVAL;
+    r = barrier_ref_init (b_);
+    if (r != 0)
+      return r;
 
     (void) attr;
-    barrier_t *b;
 
-    if (!b_)	return EINVAL; 
-    if (!count)	return EINVAL; 
-    if ( !(b = (pthread_barrier_t)calloc(1,sizeof(*b))) ) {
-        return ENOMEM; 
+    if (!(b = (pthread_barrier_t)calloc(1,sizeof(*b))))
+       return ENOMEM; 
+
+    if (pthread_mutex_init(&b->m, NULL) != 0)
+    {
+      free (b);
+      return ENOMEM;
     }
 
-    if ((r = pthread_mutex_init(&b->m, NULL))) return r;
-
-    if (( r = pthread_cond_init(&b->c, NULL))) {
+    if (pthread_cond_init(&b->c, NULL) != 0)
+    {
        pthread_mutex_destroy(&b->m);
-    } else {
-        b->count = count;
-        b->valid = LIFE_BARRIER;
-        *b_ = b;
+       free (b);
+       return ENOMEM;
     }
-    return r;
+    b->total = 0;
+    b->count = count;
+    b->valid = LIFE_BARRIER;
+    *b_ = b;
+
+    return 0;
 }
 
 int pthread_barrier_wait(pthread_barrier_t *b_)
@@ -114,28 +127,40 @@ int pthread_barrier_wait(pthread_barrier_t *b_)
 
 int pthread_barrierattr_init(void **attr)
 {
-    *attr = NULL;
-    return 0;
+  int *p;
+
+  if (!(p = (int *) calloc (1, sizeof (int))))
+    return ENOMEM;
+
+  *p = PTHREAD_PROCESS_PRIVATE;
+  *attr = p;
+
+  return 0;
 }
 
 int pthread_barrierattr_destroy(void **attr)
 {
-    /* Ignore attr */
-    (void) attr;
-
-    return 0;
+  void *p;
+  if (!attr || (p = *attr) == NULL)
+    return EINVAL;
+  *attr = NULL;
+  free (p);
+  return 0;
 }
 
 int pthread_barrierattr_setpshared(void **attr, int s)
 {
-    *attr = (void *) (size_t) s;
-    return 0;
+  if (!attr || *attr == NULL
+      || (s != PTHREAD_PROCESS_SHARED && s != PTHREAD_PROCESS_PRIVATE))
+    return EINVAL;
+  memcpy (*attr, &s, sizeof (int));
+  return 0;
 }
 
 int pthread_barrierattr_getpshared(void **attr, int *s)
 {
-    *s = (int) (size_t) *attr;
-
-    return 0;
+  if (!attr || !s || *attr == NULL)
+    return EINVAL;
+  *s = *((int *) (*attr));
+  return 0;
 }
-
