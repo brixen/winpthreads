@@ -146,7 +146,7 @@ main()
 
   for (i = 1; i <= NUMTHREADS; i++)
     {
-      assert(pthread_create(&t[i], NULL, mythread, (void *) i) == 0);
+      assert(pthread_create(&t[i], NULL, mythread, (void *) (size_t) i) == 0);
     }
 
   do {

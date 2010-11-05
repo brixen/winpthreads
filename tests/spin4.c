@@ -57,7 +57,7 @@ void * func(void * arg)
   assert(pthread_spin_unlock(&lock) == 0);
   _ftime(&currSysTimeStop);
 
-  return (void *) GetDurationMilliSecs(currSysTimeStart, currSysTimeStop);
+  return (void *) (size_t) GetDurationMilliSecs(currSysTimeStart, currSysTimeStop);
 }
  
 int

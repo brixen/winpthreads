@@ -60,7 +60,7 @@ void * wrfunc(void * arg)
       Sleep(2000);
       bankAccount += 10;
       assert(pthread_rwlock_unlock(&rwlock1) == 0);
-      return ((void *) bankAccount);
+      return ((void *) (size_t) bankAccount);
     }
   else if ((int) (size_t) arg == 2)
     {
