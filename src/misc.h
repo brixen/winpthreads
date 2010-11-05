@@ -65,7 +65,7 @@ typedef long LONGBAG;
 #define _mm_pause()			{__asm__ __volatile__("pause");}
 #endif
 
-#ifndef YieldProcessor
+#ifndef _ReadWriteBarrier
 #define _ReadWriteBarrier   __sync_synchronize
 #endif
 
