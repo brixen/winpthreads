@@ -107,7 +107,7 @@ int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
         _c->valid = LIFE_COND;
         *c = _c;
     }
-    return 0;
+    return r;
 }
 
 int pthread_cond_destroy(pthread_cond_t *c)
