@@ -141,9 +141,9 @@ millisecondsFromNow (struct timespec * time, int millisecs)
 void *
 masterThread (void * arg)
 {
-  int dither = (int) arg;
+  int dither = (int) (size_t) arg;
 
-  timeout = (int) arg;
+  timeout = (int) (size_t) arg;
 
   pthread_barrier_wait(&startBarrier);
 
@@ -239,7 +239,7 @@ main ()
   assert(pthread_barrier_init(&readyBarrier, NULL, 3) == 0);
   assert(pthread_barrier_init(&holdBarrier, NULL, 3) == 0);
 
-  assert(pthread_create(&master, NULL, masterThread, (void *) timeout) == 0);
+  assert(pthread_create(&master, NULL, masterThread, (void *) (size_t) timeout) == 0);
   assert(pthread_create(&slave, NULL, slaveThread, NULL) == 0);
 
   allExit = FALSE;
