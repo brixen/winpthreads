@@ -143,4 +143,43 @@ int assertE;
           (fprintf(stderr, "Assertion failed: (%s %s %s), file %s, line %d, error %s\n", \
                    #e,#o,#r, __FILE__, (int) __LINE__, error_string[assertE]), exit(1), 0))
 
+#ifndef PTW32_VERSION
+/* Extensions for winpthread to make more w32 tests happy (non posix): */
+
+/*
+ * gmtime(tm) and localtime(tm) return 0 if tm represents
+ * a time prior to 1/1/1970.
+ */
+#define gmtime_r( _clock, _result ) \
+        ( gmtime( (_clock) ) \
+             ? (*(_result) = *gmtime( (_clock) ), (_result) ) \
+             : (0) )
+
+#define localtime_r( _clock, _result ) \
+        ( localtime( (_clock) ) \
+             ? (*(_result) = *localtime( (_clock) ), (_result) ) \
+             : (0) )
+
+#define rand_r( _seed ) \
+        ( _seed == _seed? rand() : rand() )
+
+enum ptw32_features {
+  PTW32_SYSTEM_INTERLOCKED_COMPARE_EXCHANGE = 0x0001, /* System provides it. */
+  PTW32_ALERTABLE_ASYNC_CANCEL              = 0x0002  /* Can cancel blocked threads. */
+};
+
+#define pthread_getw32threadhandle_np(self)     ((self)->h)
+
+/* half-stubbed version */
+int pthread_win32_test_features_np(int mask)
+{
+    int r = 0;
+
+    r = (mask & PTW32_SYSTEM_INTERLOCKED_COMPARE_EXCHANGE); /* assume Win32 */
+    /* Not supporting PTW32_ALERTABLE_ASYNC_CANCEL for now, just say it isn't there */
+    return r;
+}
+
+#endif
+
 #endif

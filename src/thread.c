@@ -78,9 +78,9 @@ static int _pthread_once_raw(pthread_once_t *o, void (*func)(void))
     return 0;
 }
 
-void * pthread_timechange_handler_np(void * dummy)
+void *pthread_timechange_handler_np(void * dummy)
 {
-    return 0;
+    return NULL;
 }
 
 int pthread_delay_np (const struct timespec *interval)
@@ -103,17 +103,6 @@ int pthread_num_processors_np(void)
 	return r ? r : 1; /* assume at least 1 */
 }
 
-/* half-stubbed version */
-BOOL pthread_win32_test_features_np(int mask)
-{
-    int r = 0;
-
-    r = (mask & PTW32_SYSTEM_INTERLOCKED_COMPARE_EXCHANGE); /* assume Win32 */
-    /* Not supporting PTW32_ALERTABLE_ASYNC_CANCEL for now, just say it isn't there */
-    return r;
-}
-
-pthread_t pthread_self(void);
 int pthread_once(pthread_once_t *o, void (*func)(void))
 {
     long state = *o;
@@ -475,6 +464,7 @@ int pthread_cancel(pthread_t t)
 int pthread_kill(pthread_t t, int sig)
 {
     CHECK_OBJECT(t, ESRCH);
+    if (!sig) return 0;
     if (sig < SIGINT || sig > NSIG) return EINVAL;
     return pthread_cancel(t);
 }

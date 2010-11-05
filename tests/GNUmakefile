@@ -55,7 +55,6 @@ MAKE	= make -k
 #
 XXCFLAGS	= 
 XXLIBS	= -lws2_32 -lgomp
-#CFLAGS	= -O3 -UNDEBUG -Wall $(XXCFLAGS)
 CFLAGS	= -O3 -UNDEBUG -Wall $(XXCFLAGS)
 BUILD_DIR	= ..
 INCLUDES	= -I.
@@ -68,7 +67,7 @@ GCX	= $(TEST)$(DLL_VER)
 
 # Files we need to run the tests
 # - paths are relative to pthreads build dir.
-HDR	= pthread.h
+# HDR	= pthread.h
 LIB	= libpthread$(GCX).a
 # DLL	= pthread$(GCX).dll
 # The next path is relative to $BUILD_DIR
@@ -371,6 +370,11 @@ sizes.pass: sizes.exe
 	$*
 	@ $(ECHO) Done
 	@ $(TOUCH) $@
+
+benchtest%.exe: benchtest%.c $(LIB) $(DLL) $(HDR) $(QAPC)
+	@ $(ECHO) Compiling $@
+	@ $(ECHO) $(CC) $(CFLAGS) benchlib.o -o $@ $< $(INCLUDES) -L. -lpthread$(GCX) -lsupc++ $(XXLIBS)
+	@ $(CC) $(CFLAGS) benchlib.o -o $@ $< $(INCLUDES) -L. -lpthread$(GCX) -lsupc++ $(XXLIBS)
 
 %.exe: %.c $(LIB) $(DLL) $(HDR) $(QAPC)
 	@ $(ECHO) Compiling $@

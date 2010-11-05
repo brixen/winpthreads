@@ -18,7 +18,7 @@ static inline int spinlock_static_init(volatile pthread_spinlock_t *s )
         return 0;
     }
 
-    int r = pthread_spin_init(&s_tmp, NULL);
+    int r = pthread_spin_init(&s_tmp, 0);
     if (!r) {
         s_replaced = (spin_t *)InterlockedCompareExchangePointer(
             (PVOID *)s, 

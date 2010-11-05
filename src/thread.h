@@ -32,6 +32,8 @@ struct _pthread_v
     DWORD tid;
     int rwlc;
     pthread_rwlock_t rwlq[RWLS_PER_THREAD];
+    int sched_pol;
+    int sched_priority;
 
     jmp_buf jb;
 };

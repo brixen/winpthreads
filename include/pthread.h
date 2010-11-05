@@ -119,7 +119,7 @@
 #define PTHREAD_CREATE_JOINABLE 0
 #define PTHREAD_CREATE_DETACHED 0x04
 
-#define PTHREAD_EXPLICT_SCHED 0
+#define PTHREAD_EXPLICIT_SCHED 0
 #define PTHREAD_INHERIT_SCHED 0x08
 
 #define PTHREAD_SCOPE_PROCESS 0
@@ -149,43 +149,15 @@
 #define PTHREAD_PROCESS_SHARED 0
 #define PTHREAD_PROCESS_PRIVATE 1
 
-#ifdef PW32_COMPAT
-/* Extensions to make more w32 tests happy (non posix): */
 #define PTHREAD_MUTEX_FAST_NP		PTHREAD_MUTEX_NORMAL
 #define PTHREAD_MUTEX_TIMED_NP		PTHREAD_MUTEX_FAST_NP
 #define PTHREAD_MUTEX_ADAPTIVE_NP	PTHREAD_MUTEX_FAST_NP
 #define PTHREAD_MUTEX_ERRORCHECK_NP	PTHREAD_MUTEX_ERRORCHECK
 #define PTHREAD_MUTEX_RECURSIVE_NP	PTHREAD_MUTEX_RECURSIVE
-/* Features for pthread_win32_test_features_np: */
-#define PTW32_SYSTEM_INTERLOCKED_COMPARE_EXCHANGE   1
-#define PTW32_ALERTABLE_ASYNC_CANCEL                2
 
-#define pthread_getw32threadhandle_np(self)     ((self)->h)
 void * pthread_timechange_handler_np(void * dummy);
 int pthread_delay_np (const struct timespec *interval);
 int pthread_num_processors_np(void);
-int pthread_win32_test_features_np(int mask);
-
-/*
- * gmtime(tm) and localtime(tm) return 0 if tm represents
- * a time prior to 1/1/1970.
- */
-#define gmtime_r( _clock, _result ) \
-        ( gmtime( (_clock) ) \
-             ? (*(_result) = *gmtime( (_clock) ), (_result) ) \
-             : (0) )
-
-#define localtime_r( _clock, _result ) \
-        ( localtime( (_clock) ) \
-             ? (*(_result) = *localtime( (_clock) ), (_result) ) \
-             : (0) )
-
-#define rand_r( _seed ) \
-        ( _seed == _seed? rand() : rand() )
-
-
-#endif
-
 
 #define PTHREAD_BARRIER_SERIAL_THREAD 1
 
@@ -200,13 +172,9 @@ int pthread_win32_test_features_np(int mask);
 #define pthread_condattr_setclock(A, C) ENOTSUP
 #define pthread_mutex_getprioceiling(M, P) ENOTSUP
 #define pthread_mutex_setprioceiling(M, P) ENOTSUP
-#define pthread_getschedparam(T, P, S) ENOTSUP
-#define pthread_setschedparam(T, P, S) ENOTSUP
 #define pthread_getcpuclockid(T, C) ENOTSUP
 #define pthread_attr_getguardsize(A, S) ENOTSUP
 #define pthread_attr_setgaurdsize(A, S) ENOTSUP
-#define pthread_attr_getschedparam(A, S) ENOTSUP
-#define pthread_attr_setschedparam(A, S) ENOTSUP
 #define pthread_attr_getschedpolicy(A, S) ENOTSUP
 #define pthread_attr_setschedpolicy(A, S) ENOTSUP
 
@@ -232,13 +200,35 @@ struct itimerspec {
 };
 #endif
 
-/* FIXME: move to sched.h eventually, along with some functions below: */
+/* Some POSIX realtime extensions, mostly stubbed */
+#define SCHED_OTHER     0
+#define SCHED_FIFO      1
+#define SCHED_RR        2
+#define SCHED_MIN       SCHED_OTHER
+#define SCHED_MAX       SCHED_RR
+
 struct sched_param {
   int sched_priority ;
 };
 
-# define sched_yield()  Sleep(0)
+typedef struct pthread_attr_t pthread_attr_t;
+struct pthread_attr_t
+{
+    unsigned p_state;
+    void *stack;
+    size_t s_size;
+    struct sched_param param;
+};
 
+# define sched_yield()  Sleep(0)
+int sched_get_priority_min(int pol);
+int sched_get_priority_max(int pol);
+int pthread_attr_setschedparam(pthread_attr_t *attr, const struct sched_param *param);
+int pthread_attr_getschedparam(const pthread_attr_t *attr, struct sched_param *param);
+int pthread_getschedparam(pthread_t thread, int *pol, struct sched_param *param);
+int pthread_setschedparam(pthread_t thread, int pol,  const struct sched_param *param);
+
+/* synchronization objects */
 typedef void	*pthread_spinlock_t;
 typedef void	*pthread_mutex_t;
 typedef void	*pthread_cond_t;
@@ -261,14 +251,6 @@ typedef void	*pthread_barrier_t;
 #define PTHREAD_COND_INITIALIZER				(pthread_cond_t *)GENERIC_INITIALIZER
 #define PTHREAD_RWLOCK_INITIALIZER				(pthread_rwlock_t *)GENERIC_INITIALIZER
 #define PTHREAD_SPINLOCK_INITIALIZER			(pthread_spinlock_t *)GENERIC_INITIALIZER
-
-typedef struct pthread_attr_t pthread_attr_t;
-struct pthread_attr_t
-{
-    unsigned p_state;
-    void *stack;
-    size_t s_size;
-};
 
 void (**_pthread_key_dest)(void *);
 int pthread_key_create(pthread_key_t *key, void (* dest)(void *));
