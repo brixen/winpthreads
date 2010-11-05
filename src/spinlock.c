@@ -8,12 +8,14 @@ static int scnt = 0;
 static LONG bscnt = 0;
 static int scntMax = 0;
 
-static inline int spinlock_static_init(volatile pthread_spinlock_t *s )
+static inline int
+spinlock_static_init (volatile pthread_spinlock_t *s )
 {
     pthread_spinlock_t s_tmp=NULL;
     spin_t *si, *s_replaced;
 
-    if ( PTHREAD_SPINLOCK_INITIALIZER != (pthread_spinlock_t)(si = (spin_t *)*s) ) {
+    if ( PTHREAD_SPINLOCK_INITIALIZER != (pthread_spinlock_t)(si = (spin_t *)*s))
+    {
         /* Assume someone crept in between: */
         return 0;
     }
@@ -41,12 +43,11 @@ int pthread_spin_init(pthread_spinlock_t *l, int pshared)
 
     if (!l) return EINVAL; 
     if (pshared != PTHREAD_PROCESS_SHARED && pshared != PTHREAD_PROCESS_PRIVATE) return ENOTSUP; 
-    if ( !(_l = (pthread_spinlock_t)calloc(1, sizeof(*_l))) ) {
-        return ENOMEM; 
-    }
+    if (!(_l = (pthread_spinlock_t)calloc(1, sizeof(*_l))))
+        return ENOMEM;
 
     _l->valid = LIFE_SPINLOCK;
-     *l = _l;
+    *l = _l;
     return 0;
 }
 
@@ -55,10 +56,9 @@ int pthread_spin_destroy(pthread_spinlock_t *l)
     CHECK_SPINLOCK(l);
     spin_t *_l = (spin_t *)*l;
 
-    if ( pthread_spin_trylock(l) ) {
-        return EBUSY;
-    }
-    pthread_spinlock_t *l2 = l;
+    if (pthread_spin_trylock(l))
+      return EBUSY;
+    pthread_spinlock_t l2 = *l;
     *l= NULL; /* dereference first, free later */
     _l->valid  = DEAD_SPINLOCK;
 
@@ -66,7 +66,7 @@ int pthread_spin_destroy(pthread_spinlock_t *l)
     UNSET_OWNER_SL(_l);
     _l->l = 0;
 
-    free(*l2);
+    free(l2);
     return 0;
  }
 
@@ -171,7 +171,8 @@ int _spin_lite_lock(spin_t *l)
 }
 
 
-int pthread_spin_unlock(pthread_spinlock_t *l)
+int
+pthread_spin_unlock (pthread_spinlock_t *l)
 {
     CHECK_SPINLOCK(l);
     spin_t *_l = (spin_t *)*l;
