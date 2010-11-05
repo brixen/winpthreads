@@ -60,9 +60,18 @@ typedef long LONGBAG;
 
 /* ms can be 64 bit, solve wrap-around issues: */
 #define dwMilliSecs(ms)		((ms) >= INFINITE ? INFINITE : (DWORD)(ms))
+
+#ifndef _mm_pause
 #define _mm_pause()			{__asm__ __volatile__("pause");}
+#endif
+
+#ifndef YieldProcessor
 #define _ReadWriteBarrier   __sync_synchronize
+#endif
+
+#ifndef YieldProcessor
 #define YieldProcessor      _mm_pause
+#endif
 
 unsigned long long _pthread_time_in_ms(void);
 unsigned long long _pthread_time_in_ms_from_timespec(const struct timespec *ts);
