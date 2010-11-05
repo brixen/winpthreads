@@ -46,13 +46,10 @@
 
 #include <sys/timeb.h>
 
-//#define WINPTHREAD_DBG 1
+#define WINPTHREAD_DBG                      1
 
 /* Compatibility stuff: */
 #define RWLS_PER_THREAD						8
-
-/* w32 tests: */
-#define PW32_COMPAT		                    1 /* for the w32 test-suite */
 
 /* contention analysis, etc: */
 #define USE_SPINLOCK_DBG					1

@@ -19,6 +19,9 @@ inline int mutex_unref(volatile pthread_mutex_t *m, int r)
 {
     mutex_t *m_ = (mutex_t *)*m;
     _spin_lite_lock(&mutex_global);
+#ifdef WINPTHREAD_DBG
+    assert((m_->valid == LIFE_MUTEX) && (m_->busy > 0));
+#endif
     m_->busy --;
     _spin_lite_unlock(&mutex_global);
     return r;
@@ -122,6 +125,9 @@ inline int mutex_ref_init(volatile pthread_mutex_t *m )
 inline int rwl_unref(volatile pthread_rwlock_t *rwl, int res)
 {
     _spin_lite_lock(&rwl_global);
+#ifdef WINPTHREAD_DBG
+    assert((((rwlock_t *)*rwl)->valid == LIFE_RWLOCK) && (((rwlock_t *)*rwl)->busy > 0));
+#endif
      ((rwlock_t *)*rwl)->busy--;
     _spin_lite_unlock(&rwl_global);
     return res;
@@ -208,10 +214,10 @@ inline int cond_unref(volatile pthread_cond_t *cond, int res)
     _spin_lite_lock(&cond_global);
     cond_t *c_ = (cond_t *)*cond;
 
-    if (c_->valid != LIFE_COND)
-    	c_->busy = 0;
-    else if (c_->busy > 0)
-        c_->busy--;
+#ifdef WINPTHREAD_DBG
+    assert((c_->valid == LIFE_COND) && (c_->busy > 0));
+#endif
+    c_->busy--;
     if (!c_->busy) {
         c_->bound = NULL;
     }
@@ -302,6 +308,9 @@ inline int cond_ref_init(volatile pthread_cond_t *cond )
 inline int barrier_unref(volatile pthread_barrier_t *barrier, int res)
 {
     _spin_lite_lock(&barrier_global);
+#ifdef WINPTHREAD_DBG
+    assert((((barrier_t *)*barrier)->valid == LIFE_BARRIER) && (((barrier_t *)*barrier)->busy > 0));
+#endif
      ((barrier_t *)*barrier)->busy--;
     _spin_lite_unlock(&barrier_global);
     return res;

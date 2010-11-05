@@ -52,3 +52,14 @@ Sometimes you want to test, debug and modify a single test, say once2.c:
 5. Build and run it:
    $ make once2.exe
    $ ./once2.exe
+
+Benchtests:
+-----------
+
+These work, but you have to compile them by hand like this:
+$ make benchlib.o
+$ make benchtest1.exe
+$ make benchtest2.exe
+$ make benchtest3.exe
+$ make benchtest4.exe
+$ make benchtest5.exe
