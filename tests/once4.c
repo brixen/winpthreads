@@ -140,6 +140,8 @@ main()
   pthread_t t[NUM_THREADS][NUM_ONCE];
   int i, j, cpus;
   
+  fprintf(stderr, "Skipped (hangs)\n");
+  return 1;
   InitializeCriticalSection(&print_lock);
   InitializeCriticalSection(&numThreads.cs);
   InitializeCriticalSection(&numOnce.cs);
@@ -154,7 +156,7 @@ main()
    * Windows random priority boosting will obscure any problems.
    */
   cpus = pthread_num_processors_np();
-  printf("CPU count: %d\n", cpus);
+  fprintf(stderr,"CPU count: %d\n", cpus);
   if (cpus <= 1) {
     fprintf(stderr, "This test uses realtime scheduling and requires a multi-core to prevent system hang.\n");
     exit(1);

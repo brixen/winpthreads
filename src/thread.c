@@ -121,7 +121,7 @@ int pthread_set_num_processors_np(int n)
         }
         SetProcessAffinityMask(GetCurrentProcess(),ProcessNewAffinityMask);
     }
-	return r ? r : 1;
+	return r;
 }
 
 int pthread_once(pthread_once_t *o, void (*func)(void))

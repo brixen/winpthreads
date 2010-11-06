@@ -43,6 +43,7 @@
 #include <time.h>
 
 #include "../include/pthread.h"
+#include "../include/semaphore.h"
 #include "../src/misc.h"
 #include "../src/mutex.h"
 #include "../src/cond.h"

@@ -2,11 +2,13 @@
 #include <winternl.h>
 #include <stdio.h>
 #include "pthread.h"
+#include "semaphore.h"
 #include "spinlock.h"
 #include "mutex.h"
 #include "rwlock.h"
 #include "cond.h"
 #include "barrier.h"
+#include "sem.h"
 #include "ref.h"
 #include "misc.h"
 
@@ -14,6 +16,7 @@ static spin_t mutex_global = {0,LIFE_SPINLOCK,0};
 static spin_t rwl_global = {0,LIFE_SPINLOCK,0};
 static spin_t cond_global = {0,LIFE_SPINLOCK,0};
 static spin_t barrier_global = {0,LIFE_SPINLOCK,0};
+static spin_t sem_global = {0,LIFE_SPINLOCK,0};
 
 inline int mutex_unref(volatile pthread_mutex_t *m, int r)
 {
@@ -367,6 +370,71 @@ inline int barrier_ref_init(volatile pthread_barrier_t *barrier )
     }
 
     _spin_lite_unlock(&barrier_global);
+    return r;
+}
+
+inline int sem_unref(volatile sem_t *sem, int res)
+{
+    _spin_lite_lock(&sem_global);
+#ifdef WINPTHREAD_DBG
+    assert((((_sem_t *)*sem)->valid == LIFE_SEM) && (((_sem_t *)*sem)->busy > 0));
+#endif
+     ((_sem_t *)*sem)->busy--;
+    _spin_lite_unlock(&sem_global);
+    return res;
+}
+
+inline int sem_ref(volatile sem_t *sem)
+{
+    int r = 0;
+    _spin_lite_lock(&sem_global);
+
+    if (!sem || !*sem || ((_sem_t *)*sem)->valid != LIFE_SEM) r = EINVAL;
+    else {
+        ((_sem_t *)*sem)->busy ++;
+    }
+
+    _spin_lite_unlock(&sem_global);
+
+    return r;
+}
+
+inline int
+sem_ref_destroy(volatile sem_t *sem, sem_t *sDestroy)
+{
+    int r = 0;
+
+    *sDestroy = NULL;
+    if (_spin_lite_trylock(&sem_global)) return EBUSY;
+    
+    if (!sem || !*sem || ((_sem_t *)*sem)->valid != LIFE_SEM) r = EINVAL;
+    else {
+        _sem_t *s = (_sem_t *)*sem;
+        if (s->valid != LIFE_SEM) r = EINVAL;
+        else if (s->busy) r = EBUSY;
+        else {
+            *sDestroy = *sem;
+            *sem = NULL;
+        }
+    }
+
+    _spin_lite_unlock(&sem_global);
+    return r;
+}
+
+inline int sem_ref_init(volatile sem_t *sem )
+{
+    int r = 0;
+
+    _spin_lite_lock(&sem_global);
+    
+    if (!sem)  r = EINVAL;
+    else if (*sem) {
+        _sem_t *s = (_sem_t *)*sem;
+        if (s->valid == LIFE_SEM) r = EBUSY;
+    }
+
+    _spin_lite_unlock(&sem_global);
     return r;
 }
 
