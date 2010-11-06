@@ -103,6 +103,27 @@ int pthread_num_processors_np(void)
 	return r ? r : 1; /* assume at least 1 */
 }
 
+int pthread_set_num_processors_np(int n) 
+{
+    int r = 0; 
+    n = n ? n : 1;  /* need at least 1 */
+	DWORD_PTR ProcessAffinityMask, ProcessNewAffinityMask=0, SystemAffinityMask;
+
+	if (GetProcessAffinityMask(GetCurrentProcess(), &ProcessAffinityMask, &SystemAffinityMask)) {
+	    for (; ProcessAffinityMask != 0; ProcessAffinityMask>>=1){
+           ProcessNewAffinityMask<<=1;
+           if ( ProcessAffinityMask&1 ) {
+               if (r < n) {
+                   ProcessNewAffinityMask |= 1;
+                   r ++;
+               }
+           }
+        }
+        SetProcessAffinityMask(GetCurrentProcess(),ProcessNewAffinityMask);
+    }
+	return r ? r : 1;
+}
+
 int pthread_once(pthread_once_t *o, void (*func)(void))
 {
     long state = *o;

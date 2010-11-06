@@ -54,11 +54,11 @@ int pthread_getschedparam(pthread_t t, int *pol, struct sched_param *p)
     if (pol == NULL || p == NULL) {
         return EINVAL;
     }
-    if ((r = pthread_kill (t, 0) )) {
+    if ((r = pthread_kill(t, 0) )) {
         return r;
     }
 
-    *pol = SCHED_OTHER;
+    *pol = t->sched_pol;
     p->sched_priority = t->sched_priority;
 
     return r;
@@ -67,7 +67,7 @@ int pthread_getschedparam(pthread_t t, int *pol, struct sched_param *p)
 
 int pthread_setschedparam(pthread_t t, int pol,  const struct sched_param *p)
 {
-    int r = 0;
+    int r = 0, pr = 0;
 
     if ((pol < SCHED_MIN || pol > SCHED_MAX) || p == NULL) {
         return EINVAL;
@@ -75,12 +75,39 @@ int pthread_setschedparam(pthread_t t, int pol,  const struct sched_param *p)
     if (pol != SCHED_OTHER) {
         return ENOTSUP;
     }
-    if ((r = pthread_kill (t, 0) )) {
+    if ((r = pthread_kill(t, 0) )) {
         return r;
     }
-    t->sched_pol = pol;
-    t->sched_priority = p->sched_priority;
+    pr = p->sched_priority;
+    if (pr < sched_get_priority_min(pol) || pr > sched_get_priority_max(pol)) {
+      return EINVAL;
+    }
 
+    /* See msdn: there are actually 7 priorities:
+    THREAD_PRIORITY_IDLE    -      -15
+    THREAD_PRIORITY_LOWEST          -2
+    THREAD_PRIORITY_BELOW_NORMAL    -1
+    THREAD_PRIORITY_NORMAL           0
+    THREAD_PRIORITY_ABOVE_NORMAL     1
+    THREAD_PRIORITY_HIGHEST          2
+    THREAD_PRIORITY_TIME_CRITICAL   15
+    */
+    if (pr <= THREAD_PRIORITY_IDLE) {
+        pr = THREAD_PRIORITY_IDLE;
+    } else if (pr <= THREAD_PRIORITY_LOWEST) {
+        pr = THREAD_PRIORITY_LOWEST;
+    } else if (pr >= THREAD_PRIORITY_TIME_CRITICAL) {
+        pr = THREAD_PRIORITY_TIME_CRITICAL;
+    } else if (pr >= THREAD_PRIORITY_HIGHEST) {
+        pr = THREAD_PRIORITY_HIGHEST;
+    }
+
+    if (SetThreadPriority(t->h, pr)) {
+        t->sched_pol = pol;
+        t->sched_priority = pr;
+	} else {
+        r = EINVAL;
+	}
     return r;
 }
 

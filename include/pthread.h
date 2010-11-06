@@ -155,6 +155,7 @@
 void * pthread_timechange_handler_np(void * dummy);
 int pthread_delay_np (const struct timespec *interval);
 int pthread_num_processors_np(void);
+int pthread_set_num_processors_np(int n);
 
 #define PTHREAD_BARRIER_SERIAL_THREAD 1
 

@@ -138,7 +138,7 @@ int
 main()
 {
   pthread_t t[NUM_THREADS][NUM_ONCE];
-  int i, j;
+  int i, j, cpus;
   
   InitializeCriticalSection(&print_lock);
   InitializeCriticalSection(&numThreads.cs);
@@ -153,9 +153,18 @@ main()
    * Set the priority class to realtime - otherwise normal
    * Windows random priority boosting will obscure any problems.
    */
+  cpus = pthread_num_processors_np();
+  printf("CPU count: %d\n", cpus);
+  if (cpus <= 1) {
+    fprintf(stderr, "This test uses realtime scheduling and requires a multi-core to prevent system hang.\n");
+    exit(1);
+  }
+
+  pthread_set_num_processors_np(cpus-1);
   SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
   /* Set main thread to lower prio than threads */
   SetThreadPriority(GetCurrentThread(), -2);
+  printf("CPU count (reduced): %d\n", pthread_num_processors_np());
 
   for (j = 0; j < NUM_ONCE; j++)
     {
