@@ -18,17 +18,10 @@
 #define COND_DEADLK(m)	COND_OWNER(m)
 #define GET_OWNER(m)	(m->owner)
 #define GET_HANDLE(m)	(m->h)
-#define GET_LOCKCNT(m)	(m->lockOwner)
-#define GET_RCNT(m)		(m->busy) /* not accurate! */
-#define SET_TID(m,tid)	{ if (m->type != PTHREAD_MUTEX_RECURSIVE) \
-                            m->owner = tid; \
-                        else \
-                            if (1==InterlockedIncrement(&m->lockOwner))m->owner = tid; }
-#define SET_OWNER(m)	SET_TID(m,GetCurrentThreadId())
-#define UNSET_OWNER(m)	{ if (m->type != PTHREAD_MUTEX_RECURSIVE) \
-                            m->owner = 0; \
-                        else \
-                            if (0==InterlockedDecrement(&m->lockOwner))m->owner = 0; }
+#define GET_LOCKCNT(m)	(m->count)
+#define GET_RCNT(m)	(m->count) /* not accurate! */
+#define SET_OWNER(m)	(m->owner = GetCurrentThreadId())
+#define UNSET_OWNER(m)	{ m->owner = 0; }
 #define LOCK_UNDO(m)
 #endif
 #define COND_DEADLK_NR(m)	((m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(m))
@@ -68,7 +61,8 @@ struct mutex_t
 {
     LONG valid;   
     volatile LONG busy;   
-    int type;   
+    int type;
+    volatile LONG count;
 #if defined USE_MUTEX_Mutex
     LONG lockOwner;
     DWORD owner;
@@ -76,9 +70,6 @@ struct mutex_t
 #else /* USE_MUTEX_CriticalSection.  */
     _csu cs;
 #endif
-    /* Prevent multiple (external) unlocks from messing up the semaphore signal state */
-    HANDLE semExt;
-    LONG lockExt;
 };
 
 inline int mutex_static_init(volatile pthread_mutex_t *m);

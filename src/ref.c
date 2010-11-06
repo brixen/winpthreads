@@ -35,7 +35,7 @@ inline int mutex_ref_ext(volatile pthread_mutex_t *m)
     _spin_lite_lock(&mutex_global);
 
     if (!m || !*m ) r = EINVAL;
-    else if (STATIC_INITIALIZER(m) || !COND_OWNER(m_)) r = EPERM;
+    else if (STATIC_INITIALIZER(m) || (m_->type != PTHREAD_MUTEX_NORMAL && COND_OWNER(m_))) r = EPERM;
     else m_->busy ++;
 
     _spin_lite_unlock(&mutex_global);

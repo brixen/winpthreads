@@ -7,28 +7,6 @@
 #include "mutex.h"
 #include "misc.h"
 
-static int mutex_normal_handle_deadlk(mutex_t *_m)
-{
-    /* Now hang in the semaphore until released by another thread */
-    /* The latter is undefined behaviour and thus NOT portable */
-    InterlockedExchange(&_m->lockExt, 1);
-    while(WaitForSingleObject(_m->semExt, INFINITE));
-    if (!COND_OWNER(_m)) return EINVAL; /* or should this be an assert ? */
-    return 0;
-}
-
-static int mutex_normal_handle_undefined(mutex_t *_m)
-{
-    /* Release the semaphore waited on by another thread */
-    /* This is undefined behaviour and thus NOT portable */
-    if (_m && _m->semExt && InterlockedExchange(&_m->lockExt, 0)) {
-        /* only 1 unlock should actually release the semaphore */
-        printf("mutex ext unlock: from thread %d of thread %d\n",(int)GetCurrentThreadId(), (int)GET_OWNER(_m));
-        ReleaseSemaphore(_m->semExt, 1, NULL);
-    }
-    return 0;
-}
-
 static int print_state = 1;
 void mutex_print_set(int state)
 {
@@ -48,7 +26,7 @@ void mutex_print(volatile pthread_mutex_t *m, char *txt)
             (int)m_->valid, 
             (int)m_->busy,
             m_->type,
-            (int)GET_OWNER(m_),(int)GET_LOCKCNT(m_),(int)GET_RCNT(m_),GET_HANDLE(m_),txt);
+            (int)GET_OWNER(m_),(int)(m_->count),(int)GET_RCNT(m_),GET_HANDLE(m_),txt);
     }
 }
 
@@ -85,12 +63,19 @@ int pthread_mutex_lock(pthread_mutex_t *m)
     if(r) return r;
 
     mutex_t *_m = (mutex_t *)*m;
+    if (COND_LOCKED(_m))
+    {
+      if (_m->type == PTHREAD_MUTEX_RECURSIVE)
+      {
+	if (COND_OWNER(_m))
+	{
+	  InterlockedIncrement(&_m->count);
+	  return mutex_unref(m,0);
+	}
+      }
+    }
 
-    if (_m->type == PTHREAD_MUTEX_NORMAL) {
-        if (COND_DEADLK(_m)) {
-            return mutex_unref(m,mutex_normal_handle_deadlk(_m));
-        }
-    } else {
+    if (_m->type != PTHREAD_MUTEX_NORMAL) {
         if(COND_DEADLK_NR(_m)) {
             return mutex_unref(m,EDEADLK);
         }
@@ -106,8 +91,9 @@ int pthread_mutex_lock(pthread_mutex_t *m)
 #else /* USE_MUTEX_CriticalSection */
     EnterCriticalSection(&_m->cs.cs);
 #endif
+    _m->count = 1;
     SET_OWNER(_m);
-    return mutex_unref(m,r);
+    return mutex_unref(m,0);
 
 }
 
@@ -198,13 +184,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
     if ( r != EBUSY ) return mutex_unref(m,r);
     
     mutex_t *_m = (mutex_t *)*m;
-    if (_m->type == PTHREAD_MUTEX_NORMAL) {
-        if (COND_DEADLK(_m)) {
-            return mutex_unref(m,mutex_normal_handle_deadlk(_m));
-        }
-    } else if(COND_DEADLK_NR(_m)) {
-            return mutex_unref(m,EDEADLK);
-    }
+    if (_m->type != PTHREAD_MUTEX_NORMAL && COND_OWNER(_m))
+      return mutex_unref(m,EDEADLK);
 
     ct = _pthread_time_in_ms();
     t = _pthread_time_in_ms_from_timespec(ts);
@@ -253,8 +234,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
                     /* We had to wait on it, so must be 1: */
                     InterlockedExchange(&_m->cs.rc.RecursionCount, 1);
 #endif
-                    SET_OWNER(_m);
-                    assert(COND_OWNER(_m));
+		    _m->count = 1;
+		    SET_OWNER(_m);
                     return mutex_unref(m,0);
                 default:
                     LOCK_UNDO(_m);
@@ -273,6 +254,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
         ct = _pthread_time_in_ms();
         i ++;
     }
+    _m->count = 1;
     SET_OWNER(_m);
     return  mutex_unref(m,0);
 }
@@ -283,24 +265,29 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
     if(r) return r;
 
     mutex_t *_m = (mutex_t *)*m;
-    if (_m->type == PTHREAD_MUTEX_NORMAL) {
-        if (!COND_LOCKED(_m)) {
+    if (_m->type == PTHREAD_MUTEX_NORMAL)
+    {
+        if (!COND_LOCKED(_m))
             return mutex_unref(m,EPERM);
-        } else if (!COND_OWNER(_m)){
-            return mutex_unref(m,mutex_normal_handle_undefined(_m));
-        }
-    } else if (!COND_OWNER(_m)){
+    }
+    else if (!COND_OWNER(_m))
         return mutex_unref(m,EPERM);
+    if (_m->type == PTHREAD_MUTEX_RECURSIVE)
+    {
+      InterlockedDecrement(&_m->count);
+      if (_m->count > 0)
+	return mutex_unref(m,0);
     }
 #if defined USE_MUTEX_Mutex
     DWORD o=GET_OWNER(_m);
     UNSET_OWNER(_m);
     if (!ReleaseMutex(_m->h)) {
         /* restore our own bookkeeping */
-        SET_TID(_m,o);
+        SET_OWNER(_m);
         return mutex_unref(m,EPERM);
     }
 #else /* USE_MUTEX_CriticalSection */
+    UNSET_OWNER(_m);
     LeaveCriticalSection(&_m->cs.cs);
 #endif
     return mutex_unref(m,0);
@@ -310,8 +297,17 @@ int _mutex_trylock(pthread_mutex_t *m)
 {
     int r = 0;
     mutex_t *_m = (mutex_t *)*m;
-    if ((_m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(_m)) {
-        return EBUSY;
+    if (COND_LOCKED(_m))
+    {
+      if (_m->type == PTHREAD_MUTEX_RECURSIVE)
+      {
+	if (COND_OWNER(_m))
+	{
+	  InterlockedIncrement(&_m->count);
+	  return 0;
+	}
+      }
+      return EBUSY;
     }
 #if defined USE_MUTEX_Mutex
     switch (WaitForSingleObject(_m->h, 0)) {
@@ -327,7 +323,11 @@ int _mutex_trylock(pthread_mutex_t *m)
 #else /* USE_MUTEX_CriticalSection */
     r = TryEnterCriticalSection(&_m->cs.cs) ? 0 : EBUSY;
 #endif
-    if (!r) SET_OWNER(_m);
+    if (!r)
+    {
+      _m->count = 1;
+      SET_OWNER(_m);
+    }
     return r;
 }
 
@@ -367,13 +367,13 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 
     int r = mutex_ref_init(m);
     if(r) return r;
-    (void) a;
 
-    if ( !(_m = (pthread_mutex_t)calloc(1,sizeof(*_m))) ) {
-        return ENOMEM; 
-    }
+    if (!(_m = (pthread_mutex_t)calloc(1,sizeof(*_m))))
+      return ENOMEM; 
 
-    _m->type = PTHREAD_MUTEX_DEFAULT; 
+    _m->type = PTHREAD_MUTEX_DEFAULT;
+    _m->count = 0;
+
     if (a) {
         r = pthread_mutexattr_gettype(a, &_m->type);
     }
@@ -383,20 +383,6 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 #else /* USE_MUTEX_CriticalSection */
         if (InitializeCriticalSectionAndSpinCount(&_m->cs.cs, USE_MUTEX_CriticalSection_SpinCount)) {
 #endif
-            if (_m->type == PTHREAD_MUTEX_NORMAL) {
-                /* Prevent multiple (external) unlocks from messing up the semaphore signal state.
-                 * Setting lMaximumCount to 1 is not enough, we also use _m->lockExt.
-                 */
-                _m->semExt = CreateSemaphore (NULL, 0, 1, NULL);
-                if (!_m->semExt) {
-#if defined USE_MUTEX_Mutex
-                    CloseHandle(_m->h);
-#else /* USE_MUTEX_CriticalSection */
-                    DeleteCriticalSection(&_m->cs.cs);
-#endif
-                    r = ENOMEM;
-                }
-            }
         } else {
 #if defined USE_MUTEX_Mutex
             switch (GetLastError()) {
@@ -411,16 +397,18 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
 #endif
         }
     } 
-    if (r) {
-        _m->valid		= DEAD_MUTEX;
+    if (r)
+    {
+        _m->valid = DEAD_MUTEX;
         free(_m);
-    } else {
-        if (InterlockedExchange(&InitOnce, 0)) _mutex_init_once(_m);
-        _m->valid		= LIFE_MUTEX;
-        *m = _m;
+        return r;
     }
+    if (InterlockedExchange(&InitOnce, 0))
+	    _mutex_init_once(_m);
+    _m->valid = LIFE_MUTEX;
+    *m = _m;
 
-    return r;
+    return 0;
 }
 
 int pthread_mutex_destroy(pthread_mutex_t *m)
@@ -434,9 +422,6 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
     mutex_t *_m = (mutex_t *)mDestroy;
 
 
-    if (_m->semExt) {
-        CloseHandle(_m->semExt);
-    }
 #if defined USE_MUTEX_Mutex
     CloseHandle(_m->h);
 #else /* USE_MUTEX_CriticalSection */
@@ -444,6 +429,7 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 #endif
     _m->valid = DEAD_MUTEX;
     _m->type  = 0;
+    _m->count = 0;
     free(mDestroy);
     return 0;
 }
