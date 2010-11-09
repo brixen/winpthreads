@@ -356,6 +356,15 @@ inline int barrier_ref_init(volatile pthread_barrier_t *barrier )
     return r;
 }
 
+inline int sem_result(int res)
+{
+    if (res>0) {
+        errno = res;
+        res = -1;
+    }
+    return res;
+}
+
 inline int sem_unref(volatile sem_t *sem, int res)
 {
     _spin_lite_lock(&sem_global);
@@ -364,11 +373,7 @@ inline int sem_unref(volatile sem_t *sem, int res)
 #endif
      ((_sem_t *)*sem)->busy--;
     _spin_lite_unlock(&sem_global);
-    if (res>0) {
-        errno = res;
-        res = -1;
-    }
-    return res;
+    return sem_result(res);
 }
 
 inline int sem_ref(volatile sem_t *sem)

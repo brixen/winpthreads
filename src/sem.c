@@ -14,23 +14,23 @@ int sem_init(sem_t *sem, int pshared, unsigned int value)
     mode_t r;
 
     if (value > (unsigned int)SEM_VALUE_MAX) {
-        return EINVAL;
+        return sem_result(EINVAL);
     }
     if (pshared == PTHREAD_PROCESS_SHARED) {
-        return EPERM;
+        return sem_result(EPERM);
     }
 
     r = sem_ref_init(sem);
     if (r != 0)
-        return r;
+        return sem_result(r);
 
     if (!(s = (sem_t)calloc(1,sizeof(*s))))
-        return ENOMEM; 
+       return sem_result(ENOMEM); 
 
     if ((s->s = CreateSemaphore (NULL, value, SEM_VALUE_MAX, NULL)) == NULL) {
         s->valid = DEAD_SEM;
         free(s); 
-        return ENOSPC;
+        return sem_result(ENOSPC); 
     }
     InitializeCriticalSectionAndSpinCount(&s->value_lock,USE_SEM_CriticalSection_SpinCount);
 
@@ -47,7 +47,7 @@ int sem_destroy(sem_t *sem)
     int r = sem_ref_destroy(sem,&sDestroy);
     
     if (r)
-      return r;
+      return sem_result(r);
 
     _sem_t *s = (_sem_t *)sDestroy;
     
@@ -55,8 +55,8 @@ int sem_destroy(sem_t *sem)
     DeleteCriticalSection(&s->value_lock);
     s->valid = DEAD_SEM;
     free(sDestroy);
-    return r;
 
+    return 0;
 }
 
 int sem_trywait(sem_t *sem)
