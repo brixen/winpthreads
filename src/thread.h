@@ -24,8 +24,7 @@ struct _pthread_v
     int rwlc;
     pthread_rwlock_t rwlq[RWLS_PER_THREAD];
     int sched_pol;
-    int sched_priority;
-
+    struct sched_param sched;
     jmp_buf jb;
 };
 

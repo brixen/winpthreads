@@ -608,6 +608,7 @@ int pthread_create_wrapper(void *args)
 
     TlsSetValue(_pthread_tls, tv);
     tv->tid = GetCurrentThreadId();
+    pthread_setschedparam(tv, SCHED_OTHER, &tv->sched);
 
     if (!setjmp(tv->jb))
     {
@@ -659,6 +660,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     if (attr)
     {
         tv->p_state = attr->p_state;
+        tv->sched.sched_priority = attr->param.sched_priority;
         ssize = attr->s_size;
     }
 

@@ -59,7 +59,7 @@ int pthread_getschedparam(pthread_t t, int *pol, struct sched_param *p)
     }
 
     *pol = t->sched_pol;
-    p->sched_priority = t->sched_priority;
+    p->sched_priority = t->sched.sched_priority;
 
     return r;
 
@@ -104,7 +104,7 @@ int pthread_setschedparam(pthread_t t, int pol,  const struct sched_param *p)
 
     if (SetThreadPriority(t->h, pr)) {
         t->sched_pol = pol;
-        t->sched_priority = pr;
+        t->sched.sched_priority = pr;
 	} else {
         r = EINVAL;
 	}
