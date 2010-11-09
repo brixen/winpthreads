@@ -310,7 +310,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     	return cond_unref(c,r);
 
     pthread_testcancel();
-    dwr = _pthread_rel_time_in_ms(t);
+    dwr = dwMilliSecs(_pthread_rel_time_in_ms(t));
 #if defined USE_COND_SignalObjectAndWait
     mutex_t *_m = (mutex_t *)*external_mutex;
 

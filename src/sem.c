@@ -134,7 +134,7 @@ int sem_timedwait(sem_t *sem, const struct timespec *t)
     EnterCriticalSection (&s->value_lock);
     n = --s->value;
     LeaveCriticalSection (&s->value_lock);
-    dwr = (t==NULL) ? INFINITE :_pthread_rel_time_in_ms(t);
+    dwr = (t==NULL) ? INFINITE : dwMilliSecs(_pthread_rel_time_in_ms(t));
     if (n<0) {
         dwr = WaitForSingleObject(s->s, dwr);
         switch (dwr) {

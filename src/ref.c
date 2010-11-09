@@ -211,8 +211,7 @@ inline int cond_unref(volatile pthread_cond_t *cond, int res)
 #ifdef WINPTHREAD_DBG
     assert((c_->valid == LIFE_COND) && (c_->busy > 0));
 #endif
-    c_->busy--;
-    if (!c_->busy) {
+     if (!(--c_->busy)) {
         c_->bound = NULL;
     }
     _spin_lite_unlock(&cond_global);
