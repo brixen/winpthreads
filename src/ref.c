@@ -38,7 +38,7 @@ inline int mutex_ref_ext(volatile pthread_mutex_t *m)
     _spin_lite_lock(&mutex_global);
 
     if (!m || !*m ) r = EINVAL;
-    else if (STATIC_INITIALIZER(m) || (m_->type != PTHREAD_MUTEX_NORMAL && COND_OWNER(m_))) r = EPERM;
+    else if (STATIC_INITIALIZER(m) || !COND_OWNER(m_)) r = EPERM;
     else m_->busy ++;
 
     _spin_lite_unlock(&mutex_global);
@@ -108,7 +108,6 @@ inline int mutex_ref_destroy(volatile pthread_mutex_t *m, pthread_mutex_t *mDest
     return r;
 }
 
-/* A valid mutex can't be re-initialized -> EBUSY */
 inline int mutex_ref_init(volatile pthread_mutex_t *m )
 {
     int r = 0;
@@ -116,11 +115,7 @@ inline int mutex_ref_init(volatile pthread_mutex_t *m )
     _spin_lite_lock(&mutex_global);
     
     if (!m)  r = EINVAL;
-    else if (*m && !STATIC_INITIALIZER(*m)) {
-        mutex_t *m_ = (mutex_t *)*m;
-        if (m_->valid == LIFE_MUTEX) r = EBUSY;
-    }
-
+ 
     _spin_lite_unlock(&mutex_global);
     return r;
 }
@@ -202,10 +197,6 @@ inline int rwl_ref_init(volatile pthread_rwlock_t *rwl )
     _spin_lite_lock(&rwl_global);
     
     if (!rwl)  r = EINVAL;
-    else if (*rwl && !STATIC_RWL_INITIALIZER(*rwl)) {
-        rwlock_t *r_ = (rwlock_t *)*rwl;
-        if (r_->valid == LIFE_RWLOCK) r = EBUSY;
-    }
 
     _spin_lite_unlock(&rwl_global);
     return r;
@@ -298,10 +289,6 @@ inline int cond_ref_init(volatile pthread_cond_t *cond )
     _spin_lite_lock(&cond_global);
     
     if (!cond)  r = EINVAL;
-    else if (*cond && !STATIC_COND_INITIALIZER(*cond)) {
-        cond_t *r_ = (cond_t *)*cond;
-        if (r_->valid == LIFE_COND) r = EBUSY;
-    }
 
     _spin_lite_unlock(&cond_global);
     return r;
@@ -364,10 +351,6 @@ inline int barrier_ref_init(volatile pthread_barrier_t *barrier )
     _spin_lite_lock(&barrier_global);
     
     if (!barrier)  r = EINVAL;
-    else if (*barrier) {
-        barrier_t *b_ = (barrier_t *)*barrier;
-        if (b_->valid == LIFE_BARRIER) r = EBUSY;
-    }
 
     _spin_lite_unlock(&barrier_global);
     return r;
@@ -381,6 +364,10 @@ inline int sem_unref(volatile sem_t *sem, int res)
 #endif
      ((_sem_t *)*sem)->busy--;
     _spin_lite_unlock(&sem_global);
+    if (res>0) {
+        errno = res;
+        res = -1;
+    }
     return res;
 }
 
@@ -429,10 +416,6 @@ inline int sem_ref_init(volatile sem_t *sem )
     _spin_lite_lock(&sem_global);
     
     if (!sem)  r = EINVAL;
-    else if (*sem) {
-        _sem_t *s = (_sem_t *)*sem;
-        if (s->valid == LIFE_SEM) r = EBUSY;
-    }
 
     _spin_lite_unlock(&sem_global);
     return r;

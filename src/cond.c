@@ -310,6 +310,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     	return cond_unref(c,r);
 
     pthread_testcancel();
+    dwr = _pthread_rel_time_in_ms(t);
 #if defined USE_COND_SignalObjectAndWait
     mutex_t *_m = (mutex_t *)*external_mutex;
 
@@ -321,10 +322,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     /* This call atomically releases the mutex and waits on the */
     /* semaphore until <pthread_cond_signal> or <pthread_cond_broadcast> */
     /* are called by another thread. */
-    /*dwr = SignalObjectAndWait (external_mutex->h, cv->sema_, dwMilliSecs(_pthread_time_in_ms_from_timespec(t)), FALSE); */
-    dwr = _pthread_rel_time_in_ms(t);
-    printf("pthread_cond_timedwait wait %d ms\n", (int) dwr);
-    dwr = SignalObjectAndWait (_m->h, _c->sema_, 3000, FALSE);
+    dwr = SignalObjectAndWait (_m->h, _c->sema_, dwr, FALSE);
     switch (dwr) {
     case WAIT_TIMEOUT:
         r = ETIMEDOUT;
@@ -374,8 +372,6 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 #elif defined  USE_COND_ConditionVariable
     mutex_t *_m = (mutex_t *)*external_mutex;
 
-    dwr = _pthread_rel_time_in_ms(t);
-    printf("pthread_cond_timedwait wait %d ms\n", (int) dwr);
     if (!SleepConditionVariableCS(&_c->CV,  &_m->cs.cs, dwr)) {
         r = ETIMEDOUT;
     } else {
@@ -389,7 +385,6 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     LeaveCriticalSection (&_c->waiters_count_lock_);
     pthread_mutex_unlock(external_mutex);
 
-    dwr = _pthread_rel_time_in_ms(t);
     dwr = WaitForSingleObject(_c->sema_, dwr);
     switch (dwr) {
     case WAIT_TIMEOUT:

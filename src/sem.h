@@ -10,7 +10,9 @@ struct _sem_t
     unsigned int valid;
     volatile LONG busy;
     HANDLE s;
-    unsigned int value;
+    unsigned int initial;
+    int value;
+    CRITICAL_SECTION value_lock;
 };
 
 #endif /* WIN_SEM */

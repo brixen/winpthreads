@@ -17,17 +17,17 @@ typedef void	        *sem_t;
 
 int sem_init(sem_t * sem, int pshared, unsigned int value);
 
-int sem_destroy(sem_t * sem);
+int sem_destroy(sem_t *sem);
 
-int sem_trywait(sem_t * sem);
+int sem_trywait(sem_t *sem);
 
-int sem_wait(sem_t * sem);
+int sem_wait(sem_t *sem);
 
-int sem_timedwait(sem_t * sem, const struct timespec * abstime);
+int sem_timedwait(sem_t * sem, const struct timespec *t);
 
-int sem_post(sem_t * sem);
+int sem_post(sem_t *sem);
 
-int sem_post_multiple(sem_t * sem, int count);
+int sem_post_multiple(sem_t *sem, int count);
 
 /* yes, it returns a semaphore (or SEM_FAILED) */
 sem_t *sem_open(const char * name, int oflag, mode_t mode, unsigned int value);

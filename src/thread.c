@@ -37,9 +37,9 @@ void thread_print(volatile pthread_t t, char *txt)
             );
     }
 }
-static void _pthread_once_cleanup(pthread_once_t *o)
+static void _pthread_once_cleanup(void *o)
 {
-    *o = 0;
+    *(pthread_once_t *)o = 0;
 }
 
 static int _pthread_once_raw(pthread_once_t *o, void (*func)(void))
