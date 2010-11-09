@@ -16,7 +16,7 @@ int sem_init(sem_t *sem, int pshared, unsigned int value)
     if (value > (unsigned int)SEM_VALUE_MAX) {
         return sem_result(EINVAL);
     }
-    if (pshared == PTHREAD_PROCESS_SHARED) {
+    if (pshared != PTHREAD_PROCESS_PRIVATE) {
         return sem_result(EPERM);
     }
 

@@ -332,8 +332,7 @@ barrier_ref_destroy(volatile pthread_barrier_t *barrier, pthread_barrier_t *bDes
     if (!barrier || !*barrier || ((barrier_t *)*barrier)->valid != LIFE_BARRIER) r = EINVAL;
     else {
         barrier_t *b_ = (barrier_t *)*barrier;
-        if (b_->valid != LIFE_BARRIER) r = EINVAL;
-        else if (b_->busy) r = EBUSY;
+        if (b_->busy) r = EBUSY;
         else {
             *bDestroy = *barrier;
             *barrier = NULL;
@@ -402,8 +401,7 @@ sem_ref_destroy(volatile sem_t *sem, sem_t *sDestroy)
     if (!sem || !*sem || ((_sem_t *)*sem)->valid != LIFE_SEM) r = EINVAL;
     else {
         _sem_t *s = (_sem_t *)*sem;
-        if (s->valid != LIFE_SEM) r = EINVAL;
-        else if (s->busy) r = EBUSY;
+        if (s->busy) r = EBUSY;
         else {
             *sDestroy = *sem;
             *sem = NULL;
