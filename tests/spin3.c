@@ -34,7 +34,7 @@
  * --------------------------------------------------------------------------
  *
  * Thread A locks spin - thread B tries to unlock.
- * This should succeed, but it's undefined behaviour.
+ * This should result in a EPERM as adviced in the spec, but it's undefined behaviour.
  *
  */
 
@@ -49,7 +49,7 @@ void * unlocker(void * arg)
   int expectedResult = (int) (size_t) arg;
 
   wasHere++;
-  assert(pthread_spin_unlock(&spin) == expectedResult);
+  assert(pthread_spin_unlock(&spin) == EPERM);
   wasHere++;
   return NULL;
 }
@@ -64,7 +64,7 @@ main()
   assert(pthread_spin_lock(&spin) == 0);
   assert(pthread_create(&t, NULL, unlocker, (void *) 0) == 0);
   assert(pthread_join(t, NULL) == 0);
-  assert(pthread_spin_unlock(&spin) == EPERM);
+  assert(pthread_spin_unlock(&spin) == 0);
   assert(pthread_spin_destroy(&spin) == 0);
   assert(wasHere == 2);
 
