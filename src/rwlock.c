@@ -227,7 +227,7 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 
     pthread_testcancel();
 #ifdef USE_RWLOCK_pthread_cond
-    if ( (result = pthread_mutex_lock (&rwlock->m)) )
+    if ((result = pthread_mutex_timedlock (&rwlock->m, ts)) != 0)
         return rwl_unref(rwlock_, result);
 
     if (rwlock->writers) {
@@ -324,6 +324,8 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         
         /* Have we waited long enough? */
         if (ct > t) return rwl_unref(rwlock_, ETIMEDOUT);
+        /* Well, play nice and give other threads a chance.  */
+        Sleep(0);
     }
 
 #endif /* Busy wait solution */
@@ -529,33 +531,35 @@ int pthread_rwlock_wrlock (pthread_rwlock_t *rwlock_)
 
 int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 {
-    if (!ts) return EINVAL;
-    int result = rwl_ref(rwlock_,0);
-    if(result) return result;
-    
-    rwlock_t *rwlock = (rwlock_t *)*rwlock_;
+  int result;
+  rwlock_t *rwlock;
 
-    pthread_testcancel();
+  if (!rwlock_ || !ts)
+    return EINVAL;
+  if ((result = rwl_ref(rwlock_,0)) != 0)
+    return result;
+  rwlock = (rwlock_t *)*rwlock_;
+  pthread_testcancel();
 #ifdef USE_RWLOCK_pthread_cond
-    if ( (result = pthread_mutex_lock (&rwlock->m)) )
-        return rwl_unref(rwlock_,result);
+  if ((result = pthread_mutex_timedlock (&rwlock->m, ts)) != 0)
+      return rwl_unref(rwlock_,result);
 
-    if (rwlock->writers || rwlock->readers) {
-        InterlockedIncrement((LONG *)&rwlock->writers_count);
-        pthread_cleanup_push (_pthread_once_rwlock_writecleanup, (void*)rwlock);
-        while (rwlock->writers || rwlock->readers > 0) {
-            result = pthread_cond_timedwait (&rwlock->cw, &rwlock->m, ts);
-            if (result) break;
-        }
-        pthread_cleanup_pop (0);
-        InterlockedDecrement((LONG *)&rwlock->writers_count);
-    }
-    if (!result) {
-          result = rwl_check_owner(rwlock_,RWL_SET);
-          if (!result) rwlock->writers = 1;
-    }
+  if (rwlock->writers || rwlock->readers) {
+      InterlockedIncrement((LONG *)&rwlock->writers_count);
+      pthread_cleanup_push (_pthread_once_rwlock_writecleanup, (void*)rwlock);
+      while (rwlock->writers || rwlock->readers > 0) {
+	  result = pthread_cond_timedwait (&rwlock->cw, &rwlock->m, ts);
+	  if (result) break;
+      }
+      pthread_cleanup_pop (0);
+      InterlockedDecrement((LONG *)&rwlock->writers_count);
+  }
+  if (!result) {
+	result = rwl_check_owner(rwlock_,RWL_SET);
+	if (!result) rwlock->writers = 1;
+  }
 
-    UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
+  UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
 
 #else /* USE_RWLOCK_SRWLock */
     unsigned long long ct = _pthread_time_in_ms();
@@ -627,6 +631,8 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         
         /* Have we waited long enough? */
         if (ct > t) return rwl_unref(rwlock_,ETIMEDOUT);
+        /* Well, play nice and give other threads a chance.  */
+        Sleep(0);
     }
 
 #endif /* Busy wait solution */
@@ -636,25 +642,29 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
 
 int pthread_rwlockattr_destroy(pthread_rwlockattr_t *a)
 {
-    (void) a;
-    return 0;
+  if (!a)
+    return EINVAL;
+  return 0;
 }
 
 int pthread_rwlockattr_init(pthread_rwlockattr_t *a)
 {
-    *a = 0;
+    *a = PTHREAD_PROCESS_PRIVATE;
     return 0;
 }
 
 int pthread_rwlockattr_getpshared(pthread_rwlockattr_t *a, int *s)
 {
-    *s = *a;
-    return 0;
+  if (!a || !s)
+    return EINVAL;
+  *s = *a;
+  return 0;
 }
 
 int pthread_rwlockattr_setpshared(pthread_rwlockattr_t *a, int s)
 {
-    *a = s;
-    return 0;
+  if (!a || (s != PTHREAD_PROCESS_SHARED && s != PTHREAD_PROCESS_PRIVATE))
+    return EINVAL;
+  *a = s;
+  return 0;
 }
-
