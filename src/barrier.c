@@ -16,19 +16,18 @@ int pthread_barrier_destroy(pthread_barrier_t *b_)
     
     pthread_mutex_lock(&b->m);
 
-    r = pthread_cond_destroy(&b->c);
-    if (!r) {
-        b->valid = DEAD_BARRIER;
-        pthread_mutex_unlock(&b->m);
-        pthread_mutex_destroy(&b->m);
-        free(bDestroy);
-    } else {
+    if ((r = pthread_cond_destroy(&b->c)) != 0)
+    {
         /* Could this happen? */
         *b_ = bDestroy;
         pthread_mutex_unlock (&b->m);
         return EBUSY;
     }
-    return r;
+    b->valid = DEAD_BARRIER;
+    pthread_mutex_unlock(&b->m);
+    pthread_mutex_destroy(&b->m);
+    free(bDestroy);
+    return 0;
 
 }
 
@@ -36,13 +35,10 @@ int
 pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
 {
     barrier_t *b;
-    int r;
+    int r = 0;
 
-    if (!count)
+    if (!count || !b_)
       return EINVAL;
-    r = barrier_ref_init (b_);
-    if (r != 0)
-      return r;
 
     (void) attr;
 
@@ -64,7 +60,8 @@ pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
     b->total = 0;
     b->count = count;
     b->valid = LIFE_BARRIER;
-    *b_ = b;
+    barrier_ref_set (b_,b);
+    /* *b_ = b; */
 
     return 0;
 }

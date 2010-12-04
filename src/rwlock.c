@@ -64,7 +64,8 @@ inline int rwl_check_owner(pthread_rwlock_t *rwl, int flags)
     } else if (t->rwlc && (t->rwlq[t->rwlc-1] == rwl)) {
         r = (flags&RWL_TRY) ? EBUSY : EDEADLK;
     } else if (flags&RWL_SET) {
-        t->rwlq[t->rwlc++] = rwl;
+        t->rwlq[t->rwlc] = rwl;
+        InterlockedIncrement((LONG *)&t->rwlc);
     }
 
     return r;
@@ -77,7 +78,7 @@ inline int rwl_unset_owner(pthread_rwlock_t *rwl, int flags)
     pthread_t t = pthread_self();
     if (t->rwlc && t->rwlq[t->rwlc-1] == rwl) {
         if ((flags&RWL_SET)) {
-            t->rwlc --;
+            InterlockedDecrement((LONG *)&t->rwlc);
         }
     } else {
         r = EPERM;
@@ -174,7 +175,7 @@ static void _pthread_once_rwlock_readcleanup (pthread_once_t *arg)
 {
     rwlock_t   *rwlock = (rwlock_t *)arg;
 
-    rwlock->readers_count--;
+    InterlockedDecrement((LONG *) &rwlock->readers_count);
     pthread_mutex_unlock (&rwlock->m);
 }
 #endif
@@ -193,18 +194,18 @@ int pthread_rwlock_rdlock (pthread_rwlock_t *rwlock_)
     }
 
     if (rwlock->writers) {
-        rwlock->readers_count++;
+        InterlockedIncrement((LONG *)&rwlock->readers_count);
         pthread_cleanup_push (_pthread_once_rwlock_readcleanup, (void*)rwlock);
         while (rwlock->writers) {
             if ( (result = pthread_cond_wait (&rwlock->cr, &rwlock->m)) )
                 break;
         }
         pthread_cleanup_pop (0);
-        rwlock->readers_count--;
+        InterlockedDecrement((LONG *) &rwlock->readers_count);
     }
 
     if (result == 0)
-        rwlock->readers++;
+        InterlockedIncrement((LONG *)&rwlock->readers);
 
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
 
@@ -230,19 +231,20 @@ int pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         return rwl_unref(rwlock_, result);
 
     if (rwlock->writers) {
-        rwlock->readers_count++;
+        InterlockedIncrement((LONG *)&rwlock->readers_count);
         pthread_cleanup_push (_pthread_once_rwlock_readcleanup, (void*)rwlock);
         while (rwlock->writers) {
             result = pthread_cond_timedwait (&rwlock->cr, &rwlock->m, ts);
             if (result) break;
         }
         pthread_cleanup_pop (0);
-        rwlock->readers_count--;
+        InterlockedDecrement((LONG *)&rwlock->readers_count);
     }
 
     if (!result) {
           result = rwl_check_owner(rwlock_,RWL_SET);
-          if (!result) rwlock->readers++;
+          if (!result)
+          	InterlockedIncrement((LONG *)&rwlock->readers);
     }
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
 
@@ -342,7 +344,7 @@ int pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlock_)
     if (rwlock->writers)
         result = EBUSY;
     else
-        rwlock->readers++;
+        InterlockedIncrement((LONG *)&rwlock->readers);
  
     UPD_RESULT(pthread_mutex_unlock (&rwlock->m), result);
  
@@ -430,7 +432,7 @@ int pthread_rwlock_unlock (pthread_rwlock_t *rwlock_)
             result = pthread_cond_signal (&rwlock->cw);
         }
     } else if (rwlock->readers > 0) {
-        rwlock->readers--;
+        InterlockedDecrement((LONG *)&rwlock->readers);
         if (rwlock->readers == 0 && rwlock->writers_count > 0)
             result = pthread_cond_signal (&rwlock->cw);
     }
@@ -486,7 +488,7 @@ static void _pthread_once_rwlock_writecleanup (pthread_once_t *arg)
 {
     rwlock_t *rwlock = (rwlock_t *)arg;
 
-    rwlock->writers_count--;
+    InterlockedDecrement((LONG *)&rwlock->writers_count);
     pthread_mutex_unlock (&rwlock->m);
 }
 #endif
@@ -503,14 +505,14 @@ int pthread_rwlock_wrlock (pthread_rwlock_t *rwlock_)
         return rwl_unref(rwlock_,result);
 
     if (rwlock->writers || rwlock->readers > 0) {
-        rwlock->writers_count++;
+        InterlockedIncrement((LONG *)&rwlock->writers_count);
         pthread_cleanup_push (_pthread_once_rwlock_writecleanup, (void*)rwlock);
         while (rwlock->writers || rwlock->readers > 0) {
             if ( (result = pthread_cond_wait (&rwlock->cw, &rwlock->m)) != 0)
                 break;
         }
         pthread_cleanup_pop (0);
-        rwlock->writers_count--;
+        InterlockedDecrement((LONG *)&rwlock->writers_count);
     }
     if (result == 0)
         rwlock->writers = 1;
@@ -539,14 +541,14 @@ int pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock_, struct timespec *ts)
         return rwl_unref(rwlock_,result);
 
     if (rwlock->writers || rwlock->readers) {
-        rwlock->writers_count++;
+        InterlockedIncrement((LONG *)&rwlock->writers_count);
         pthread_cleanup_push (_pthread_once_rwlock_writecleanup, (void*)rwlock);
         while (rwlock->writers || rwlock->readers > 0) {
             result = pthread_cond_timedwait (&rwlock->cw, &rwlock->m, ts);
             if (result) break;
         }
         pthread_cleanup_pop (0);
-        rwlock->writers_count--;
+        InterlockedDecrement((LONG *)&rwlock->writers_count);
     }
     if (!result) {
           result = rwl_check_owner(rwlock_,RWL_SET);

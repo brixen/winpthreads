@@ -31,6 +31,7 @@ inline int barrier_unref(volatile pthread_barrier_t *barrier, int res);
 inline int barrier_ref(volatile pthread_barrier_t *barrier);
 inline int barrier_ref_destroy(volatile pthread_barrier_t *barrier, pthread_barrier_t *bDestroy );
 inline int barrier_ref_init(volatile pthread_barrier_t *barrier );
+inline void barrier_ref_set (volatile pthread_barrier_t *barrier, void *v);
 
 inline int sem_result(int res);
 inline int sem_unref(volatile sem_t *sem, int res);

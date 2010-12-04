@@ -49,39 +49,34 @@ int pthread_attr_getschedparam(const pthread_attr_t *attr, struct sched_param *p
 
 int pthread_getschedparam(pthread_t t, int *pol, struct sched_param *p)
 {
-    int r = 0;
+    int r;
 
-    if (pol == NULL || p == NULL) {
-        return EINVAL;
-    }
-    if ((r = pthread_kill(t, 0) )) {
+    if ((r = pthread_kill(t, 0) ))
         return r;
-    }
+
+    if (pol == NULL || p == NULL)
+        return EINVAL;
 
     *pol = t->sched_pol;
     p->sched_priority = t->sched.sched_priority;
 
-    return r;
-
+    return 0;
 }
 
 int pthread_setschedparam(pthread_t t, int pol,  const struct sched_param *p)
 {
-    int r = 0, pr = 0;
+    int r, pr = 0;
 
-    if ((pol < SCHED_MIN || pol > SCHED_MAX) || p == NULL) {
-        return EINVAL;
-    }
-    if (pol != SCHED_OTHER) {
-        return ENOTSUP;
-    }
-    if ((r = pthread_kill(t, 0) )) {
+    if ((r = pthread_kill(t, 0)))
         return r;
-    }
+
+    if (pol < SCHED_MIN || pol > SCHED_MAX || p == NULL)
+        return EINVAL;
+    if (pol != SCHED_OTHER)
+        return ENOTSUP;
     pr = p->sched_priority;
-    if (pr < sched_get_priority_min(pol) || pr > sched_get_priority_max(pol)) {
+    if (pr < sched_get_priority_min(pol) || pr > sched_get_priority_max(pol))
       return EINVAL;
-    }
 
     /* See msdn: there are actually 7 priorities:
     THREAD_PRIORITY_IDLE    -      -15
@@ -105,9 +100,55 @@ int pthread_setschedparam(pthread_t t, int pol,  const struct sched_param *p)
     if (SetThreadPriority(t->h, pr)) {
         t->sched_pol = pol;
         t->sched.sched_priority = pr;
-	} else {
+    } else
         r = EINVAL;
-	}
     return r;
 }
 
+int sched_getscheduler(pid_t pid)
+{
+  if (pid != 0)
+  {
+      HANDLE h = NULL;
+      int selfPid = (int) GetCurrentProcessId ();
+
+      if (pid != (pid_t) selfPid && (h = OpenProcess (PROCESS_QUERY_INFORMATION, 0, (DWORD) pid)) == NULL)
+      {
+	  errno = (GetLastError () == (0xFF & ERROR_ACCESS_DENIED)) ? EPERM : ESRCH;
+	  return -1;
+      }
+      if (h)
+	  CloseHandle (h);
+  }
+  return SCHED_OTHER;
+}
+
+int sched_setscheduler(pid_t pid, int pol)
+{
+  if (pid != 0)
+  {
+      HANDLE h = NULL;
+      int selfPid = (int) GetCurrentProcessId ();
+
+      if (pid != (pid_t) selfPid && (h = OpenProcess (PROCESS_SET_INFORMATION, 0, (DWORD) pid)) == NULL)
+      {
+	  errno = (GetLastError () == (0xFF & ERROR_ACCESS_DENIED)) ? EPERM : ESRCH;
+	  return -1;
+      }
+      if (h)
+          CloseHandle (h);
+  }
+
+  if (pol != SCHED_OTHER)
+  {
+      errno = ENOSYS;
+      return -1;
+  }
+  return SCHED_OTHER;
+}
+
+int sched_yield(void)
+{
+  Sleep(0);
+  return 0;
+}

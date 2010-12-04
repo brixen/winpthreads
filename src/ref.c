@@ -342,7 +342,14 @@ barrier_ref_destroy(volatile pthread_barrier_t *barrier, pthread_barrier_t *bDes
     return r;
 }
 
-inline int barrier_ref_init(volatile pthread_barrier_t *barrier )
+inline void barrier_ref_set (volatile pthread_barrier_t *barrier, void *v)
+{
+  _spin_lite_lock(&barrier_global);
+  *barrier = v;
+  _spin_lite_unlock(&barrier_global);
+}
+
+inline int barrier_ref_init(volatile pthread_barrier_t *barrier)
 {
     int r = 0;
 
