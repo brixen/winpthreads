@@ -237,9 +237,12 @@ struct pthread_attr_t
     struct sched_param param;
 };
 
-# define sched_yield()  Sleep(0)
+int sched_yield(void);
 int sched_get_priority_min(int pol);
 int sched_get_priority_max(int pol);
+int sched_getscheduler(pid_t pid);
+int sched_setscheduler(pid_t pid, int pol);
+
 int pthread_attr_setschedparam(pthread_attr_t *attr, const struct sched_param *param);
 int pthread_attr_getschedparam(const pthread_attr_t *attr, struct sched_param *param);
 int pthread_getschedparam(pthread_t thread, int *pol, struct sched_param *param);
