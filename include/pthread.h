@@ -61,9 +61,9 @@
 #define USE_MUTEX_CriticalSection_SpinCount	0
 
 /* A few ways to implement pthread_mutex:  */
-#define USE_MUTEX_Mutex 1
+//#define USE_MUTEX_Mutex 1
 /* Faster than Mutex but NOT cross-process.  */
-//#define USE_MUTEX_CriticalSection 1
+#define USE_MUTEX_CriticalSection 1
 
 /* A few ways to implement pthread_cond:  */
 /* default.  */

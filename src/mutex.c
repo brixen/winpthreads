@@ -77,6 +77,13 @@ int pthread_mutex_lock(pthread_mutex_t *m)
 	  return mutex_unref(m, EDEADLK);
 	}
       }
+    } else {
+      if (COND_OWNER(_m))
+      {
+	do {
+	  Sleep(0);
+	} while (COND_OWNER(_m));
+      }
     }
 #if defined USE_MUTEX_Mutex
     switch (WaitForSingleObject(_m->h, INFINITE)) {
@@ -184,7 +191,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
     mutex_t *_m = (mutex_t *)*m;
     if (_m->type != PTHREAD_MUTEX_NORMAL && COND_LOCKED(_m) && COND_OWNER(_m))
       return mutex_unref(m,EDEADLK);
-
+    mutex_unref(m,EDEADLK);
     ct = _pthread_time_in_ms();
     t = _pthread_time_in_ms_from_timespec(ts);
     
@@ -193,67 +200,17 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
         /* Have we waited long enough? A high count means we busy-waited probably.*/
         if (ct >= t) {
             printf("%d: Timeout after %d times\n",(int)GetCurrentThreadId(), i);
-            return mutex_unref(m,ETIMEDOUT);
+            return ETIMEDOUT;
         }
-
-#if defined USE_MUTEX_CriticalSection
-        /* The cs is locked by another thread here, but we need its LockSemaphore 
-         * member initialized.
-         * The article speaks about initializing in LeaveCriticalSection() instead,
-         * but that would leave us here without an object to wait on:
-         */
-        switch(( rwait = _InitWaitCriticalSection(&_m->cs.rc) )) {
-            case 0:
-            case EAGAIN:
-               break;
-            default:
-               return mutex_unref(m,rwait);
-        }
-#endif
-        if (!rwait) {
-            switch (WaitForSingleObject(GET_HANDLE(_m), dwMilliSecs(t - ct))) {
-                case WAIT_TIMEOUT:
-                    LOCK_UNDO(_m);
-                    mutex_print(m,"WAIT_TIMEOUT");
-                    break;
-                case WAIT_OBJECT_0:
-                    mutex_print(m,"WAIT_OBJECT_0");
-#if defined USE_MUTEX_CriticalSection
-                    _tid_u ht = {NULL};
-                    /* See article: HANDLE, but contains a tid: */
-                    ht.tid =  GetCurrentThreadId();
-                    /* Now do what EnterCriticalSection() normally does: */
-                    if (InterlockedCompareExchangePointer(&_m->cs.rc.OwningThread, ht.h, NULL)) {
-                        LOCK_UNDO(_m);
-                        mutex_print(m,"EAGAIN (still owned)");
-                        break;
-                    }
-                    InterlockedIncrement(&_m->cs.rc.LockCount);
-                    /* We had to wait on it, so must be 1: */
-                    InterlockedExchange(&_m->cs.rc.RecursionCount, 1);
-#endif
-		    _m->count = 1;
-		    SET_OWNER(_m);
-                    return mutex_unref(m,0);
-                default:
-                    LOCK_UNDO(_m);
-                    printf("GLE: %d\n",(int)GetLastError());
-                    return mutex_unref(m,EINVAL);
-            }
-        } else {
-            /* Play nice.  */
-            Sleep (0);
-            mutex_print(m,"EAGAIN");
-        }
-
+        Sleep(0);
         /* Try to grab lock */
-	r=_mutex_trylock(m);
-	if (r != EBUSY ) break;
+	r = pthread_mutex_trylock(m);
+	if (r != EBUSY) break;
         /* Get current time */
         ct = _pthread_time_in_ms();
         i ++;
     }
-    return  mutex_unref(m,r);
+    return  r;
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *m)
@@ -265,22 +222,22 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
     if (_m->type == PTHREAD_MUTEX_NORMAL)
     {
         if (!COND_LOCKED(_m))
-            return mutex_unref(m,EPERM);
+	  return mutex_unref(m,EPERM);
     }
     else if (!COND_LOCKED(_m) || !COND_OWNER(_m))
         return mutex_unref(m,EPERM);
     if (_m->type == PTHREAD_MUTEX_RECURSIVE)
     {
-      InterlockedDecrement(&_m->count);
-      if (_m->count > 0)
+      if(InterlockedDecrement(&_m->count))
 	return mutex_unref(m,0);
     }
 #if defined USE_MUTEX_Mutex
-    if (!ReleaseMutex(_m->h)) {
+    UNSET_OWNER(_m);
+    if (_m->h != NULL && !ReleaseMutex(_m->h)) {
+    	SET_OWNER(_m);
         /* restore our own bookkeeping */
         return mutex_unref(m,EPERM);
     }
-    UNSET_OWNER(_m);
 #else /* USE_MUTEX_CriticalSection */
     UNSET_OWNER(_m);
     LeaveCriticalSection(&_m->cs.cs);

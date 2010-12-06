@@ -65,14 +65,17 @@ inline int mutex_ref(volatile pthread_mutex_t *m )
 }
 
 /* An unlock can simply fail with EPERM instead of auto-init (can't be owned) */
-inline int mutex_ref_unlock(volatile pthread_mutex_t *m )
+inline int mutex_ref_unlock(volatile pthread_mutex_t *m)
 {
     int r = 0;
+    mutex_t *m_ = (mutex_t *)*m;
 
     _spin_lite_lock(&mutex_global);
 
     if (!m || !*m || ((mutex_t *)*m)->valid != LIFE_MUTEX) r = EINVAL;
-    else if (STATIC_INITIALIZER(*m)) r= EPERM;
+    else if (STATIC_INITIALIZER(*m) && !COND_LOCKED(m_)) {
+      r= EPERM;
+    }
     else {
         ((mutex_t *)*m)->busy ++;
     }
