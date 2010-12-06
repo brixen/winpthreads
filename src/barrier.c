@@ -35,15 +35,19 @@ int
 pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
 {
     barrier_t *b;
-    int r = 0;
 
     if (!count || !b_)
       return EINVAL;
 
-    (void) attr;
-
     if (!(b = (pthread_barrier_t)calloc(1,sizeof(*b))))
-       return ENOMEM; 
+       return ENOMEM;
+    if (!attr || *((int **)attr) == NULL)
+      b->share = PTHREAD_PROCESS_PRIVATE;
+    else
+      memcpy (&b->share, *((void **) attr), sizeof (int));
+    b->total = 0;
+    b->count = count;
+    b->valid = LIFE_BARRIER;
 
     if (pthread_mutex_init(&b->m, NULL) != 0)
     {
@@ -57,9 +61,6 @@ pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
        free (b);
        return ENOMEM;
     }
-    b->total = 0;
-    b->count = count;
-    b->valid = LIFE_BARRIER;
     barrier_ref_set (b_,b);
     /* *b_ = b; */
 
@@ -87,10 +88,9 @@ int pthread_barrier_wait(pthread_barrier_t *b_)
     /* Are we the first to enter? */
     if (b->total == _PTHREAD_BARRIER_FLAG) b->total = 0;
 
-    b->total++;
-
-    if (b->total == b->count) {
-        b->total += _PTHREAD_BARRIER_FLAG - 1;
+    if (InterlockedIncrement ((long *) &b->total) == b->count)
+    {
+        InterlockedAdd ((long *)&b->total, _PTHREAD_BARRIER_FLAG - 1);
         r = pthread_cond_broadcast(&b->c);
         pthread_mutex_unlock(&b->m);
         if (r) {
@@ -108,10 +108,9 @@ int pthread_barrier_wait(pthread_barrier_t *b_)
             }
         }
 
-        b->total--;
-
-        /* Get entering threads to wake up */
-        if (b->total == _PTHREAD_BARRIER_FLAG) {
+        if (InterlockedDecrement ((long *) &b->total) == _PTHREAD_BARRIER_FLAG)
+        {
+            /* Get entering threads to wake up */
             r = pthread_cond_broadcast(&b->c);
         }
 
@@ -158,6 +157,6 @@ int pthread_barrierattr_getpshared(void **attr, int *s)
 {
   if (!attr || !s || *attr == NULL)
     return EINVAL;
-  *s = *((int *) (*attr));
+  memcpy (s, *attr, sizeof (int));
   return 0;
 }

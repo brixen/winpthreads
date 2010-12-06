@@ -371,16 +371,23 @@ pthread_t pthread_self(void)
 
         if (setjmp(t->jb))
         {
+            unsigned rslt = 128;
             /* Make sure we free ourselves if we are detached */
-            if (!t->h) {
+            t = (pthread_t)TlsGetValue(_pthread_tls);
+            if (t && !t->h) {
                 t->valid = DEAD_THREAD;
+                rslt = (unsigned) (size_t) t->ret_arg;
                 free(t);
                 t = NULL;
-                /* TlsSetValue(_pthread_tls, NULL); */
+                TlsSetValue(_pthread_tls, t);
+            } else if (t)
+            {
+              rslt = (unsigned) (size_t) t->ret_arg;
+              t->ended = 1;
             }
 
             /* Time to die */
-            _endthreadex(0);
+            _endthreadex(rslt);
         }
     }
 
@@ -441,15 +448,24 @@ void pthread_testcancel(void)
 
 int pthread_cancel(pthread_t t)
 {
-    CHECK_OBJECT(t, ESRCH);
+    struct _pthread_v *tv = (struct _pthread_v *) t;
 
-    if (t->p_state & PTHREAD_CANCEL_ASYNCHRONOUS)
+    CHECK_OBJECT(t, ESRCH);
+    /*if (tv->ended) return ESRCH;
+    if (pthread_equal(pthread_self(), t))
+    {
+      tv->cancelled = 1;
+      InterlockedIncrement(&_pthread_cancelling);
+      _pthread_invoke_cancel();
+    }*/
+
+    if (tv->p_state & PTHREAD_CANCEL_ASYNCHRONOUS)
     {
         /* Dangerous asynchronous cancelling */
         CONTEXT ctxt;
 
         /* Already done? */
-        if (t->cancelled) return ESRCH;
+        if (tv->cancelled) return ESRCH;
 
         ctxt.ContextFlags = CONTEXT_CONTROL;
 
@@ -460,20 +476,20 @@ int pthread_cancel(pthread_t t)
 #else
         ctxt.Eip = (uintptr_t) _pthread_invoke_cancel;
 #endif
-        SetThreadContext(t->h, &ctxt);
+        SetThreadContext(tv->h, &ctxt);
 
         /* Also try deferred Cancelling */
-        t->cancelled = 1;
+        tv->cancelled = 1;
 
         /* Notify everyone to look */
         InterlockedIncrement(&_pthread_cancelling);
 
-        ResumeThread(t->h);
+        ResumeThread(tv->h);
     }
     else
     {
         /* Safe deferred Cancelling */
-        t->cancelled = 1;
+        tv->cancelled = 1;
 
         /* Notify everyone to look */
         InterlockedIncrement(&_pthread_cancelling);
@@ -485,7 +501,10 @@ int pthread_cancel(pthread_t t)
 /* half-stubbed version as we don't really well support signals */
 int pthread_kill(pthread_t t, int sig)
 {
+    struct _pthread_v *tv = (struct _pthread_v *) t;
+
     CHECK_OBJECT(t, ESRCH);
+    if (tv->ended) return ESRCH;
     if (!sig) return 0;
     if (sig < SIGINT || sig > NSIG) return EINVAL;
     return pthread_cancel(t);
@@ -602,6 +621,7 @@ int pthread_setcanceltype(int type, int *oldtype)
 
 int pthread_create_wrapper(void *args)
 {
+    unsigned rslt = 0;
     struct _pthread_v *tv = (struct _pthread_v *)args;
 
     _pthread_once_raw(&_pthread_tls_once, pthread_tls_init);
@@ -626,14 +646,19 @@ int pthread_create_wrapper(void *args)
         _ReadWriteBarrier();
     }
 
+    rslt = (unsigned) (size_t) tv->ret_arg;
     /* Make sure we free ourselves if we are detached */
     if (!tv->h) {
         tv->valid = DEAD_THREAD;
         free(tv);
         tv = NULL;
+        TlsSetValue(_pthread_tls, tv);
     }
+    else
+      tv->ended = 1;
 
-    return 0;
+    _endthreadex(rslt);
+    return rslt;
 }
 
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
@@ -649,11 +674,10 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     	*th = tv;
 
     /* Save data in pthread_t */
+    tv->ended = 0;
     tv->ret_arg = arg;
     tv->func = func;
     tv->p_state = PTHREAD_DEFAULT_ATTR;
-    if (!th)
-      tv->p_state |= PTHREAD_CREATE_DETACHED;
     tv->h = (HANDLE) -1;
     tv->valid = LIFE_THREAD;
  
@@ -685,14 +709,21 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
 
 int pthread_join(pthread_t t, void **res)
 {
-    struct _pthread_v *tv = t;
+    DWORD dwFlags;
+    struct _pthread_v *tv = (struct _pthread_v *) t;
 
-    CHECK_THREAD(tv);
+    if (!tv || tv->h == NULL || tv->h == INVALID_HANDLE_VALUE || !GetHandleInformation(tv->h, &dwFlags))
+    {
+      return ESRCH;
+    }
+    if ((tv->p_state & PTHREAD_CREATE_DETACHED) != 0)
+      return EINVAL;
     thread_print(t,"1 pthread_join");
     if (pthread_equal(pthread_self(), t)) return EDEADLK;
 
     pthread_testcancel();
 
+    if (tv->ended == 0)
     WaitForSingleObject(tv->h, INFINITE);
     CloseHandle(tv->h);
     thread_print(t,"2 pthread_join");
@@ -708,14 +739,23 @@ int pthread_join(pthread_t t, void **res)
 
 int _pthread_tryjoin(pthread_t t, void **res)
 {
+    DWORD dwFlags;
     struct _pthread_v *tv = t;
+ 
+    if (!tv || tv->h == NULL || tv->h == INVALID_HANDLE_VALUE || !GetHandleInformation(tv->h, &dwFlags))
+      return ESRCH;
 
-    CHECK_THREAD(tv);
+    if ((tv->p_state & PTHREAD_CREATE_DETACHED) != 0)
+      return EINVAL;
     if (pthread_equal(pthread_self(), t)) return EDEADLK;
 
     pthread_testcancel();
 
-    if(WaitForSingleObject(tv->h, 0))return EBUSY;
+    if(tv->ended == 0 && WaitForSingleObject(tv->h, 0))
+    {
+      if (tv->ended == 0);
+        return EBUSY;
+    }
     CloseHandle(tv->h);
 
     /* Obtain return value */
@@ -728,17 +768,37 @@ int _pthread_tryjoin(pthread_t t, void **res)
 
 int pthread_detach(pthread_t t)
 {
+    int r = 0;
+    DWORD dwFlags;
     struct _pthread_v *tv = t;
+    HANDLE dw;
 
     /*
     * This can't race with thread exit because
     * our call would be undefined if called on a dead thread.
     */
 
-    CHECK_THREAD(tv);
-    CloseHandle(tv->h);
-    _ReadWriteBarrier();
+    if (!tv || tv->h == INVALID_HANDLE_VALUE || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
+    {
+      return ESRCH;
+    }
+    if ((tv->p_state & PTHREAD_CREATE_DETACHED) != 0)
+    {
+      return EINVAL;
+    }
+    if (tv->ended) r = ESRCH;
+    dw = tv->h;
     tv->h = 0;
+    tv->p_state |= PTHREAD_CREATE_DETACHED;
+    _ReadWriteBarrier();
+    if (dw)
+    {
+      CloseHandle(dw);
+      if (tv->ended)
+      {
+        free (tv);
+      }
+    }
 
-    return 0;
+    return r;
 }

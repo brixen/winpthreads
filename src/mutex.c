@@ -63,22 +63,20 @@ int pthread_mutex_lock(pthread_mutex_t *m)
     if(r) return r;
 
     mutex_t *_m = (mutex_t *)*m;
-    if (COND_LOCKED(_m))
+    if (_m->type != PTHREAD_MUTEX_NORMAL)
     {
-      if (_m->type == PTHREAD_MUTEX_RECURSIVE)
+      if (COND_LOCKED(_m))
       {
 	if (COND_OWNER(_m))
 	{
-	  InterlockedIncrement(&_m->count);
-	  return mutex_unref(m,0);
+	  if (_m->type == PTHREAD_MUTEX_RECURSIVE)
+	  {
+	    InterlockedIncrement(&_m->count);
+	    return mutex_unref(m,0);
+	  }
+	  return mutex_unref(m, EDEADLK);
 	}
       }
-    }
-
-    if (_m->type != PTHREAD_MUTEX_NORMAL) {
-        if(COND_DEADLK_NR(_m)) {
-            return mutex_unref(m,EDEADLK);
-        }
     }
 #if defined USE_MUTEX_Mutex
     switch (WaitForSingleObject(_m->h, INFINITE)) {
@@ -172,19 +170,19 @@ static inline void _UndoWaitCriticalSection(volatile RTL_CRITICAL_SECTION *prc)
 
 int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 {
-    int rwait = 0, i = 0;
-    if (!ts) return EINVAL; 
-    int r = mutex_ref(m);
-    if(r) return r;
-
     unsigned long long t, ct;
-    
+    int rwait = 0, i = 0, r;
+
+    if (!ts) return pthread_mutex_lock(m);
+    r = mutex_ref(m);
+    if (r) return r;
+
     /* Try to lock it without waiting */
-    if ( !(r=_mutex_trylock(m)) ) return mutex_unref(m,0);
-    if ( r != EBUSY ) return mutex_unref(m,r);
+    r=_mutex_trylock(m);
+    if (r != EBUSY ) return mutex_unref(m,r);
     
     mutex_t *_m = (mutex_t *)*m;
-    if (_m->type != PTHREAD_MUTEX_NORMAL && COND_OWNER(_m))
+    if (_m->type != PTHREAD_MUTEX_NORMAL && COND_LOCKED(_m) && COND_OWNER(_m))
       return mutex_unref(m,EDEADLK);
 
     ct = _pthread_time_in_ms();
@@ -243,20 +241,19 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
                     return mutex_unref(m,EINVAL);
             }
         } else {
+            /* Play nice.  */
+            Sleep (0);
             mutex_print(m,"EAGAIN");
         }
 
         /* Try to grab lock */
-        if (!_mutex_trylock(m)) {
-            break;
-        }
+	r=_mutex_trylock(m);
+	if (r != EBUSY ) break;
         /* Get current time */
         ct = _pthread_time_in_ms();
         i ++;
     }
-    _m->count = 1;
-    SET_OWNER(_m);
-    return  mutex_unref(m,0);
+    return  mutex_unref(m,r);
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *m)
@@ -279,13 +276,11 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
 	return mutex_unref(m,0);
     }
 #if defined USE_MUTEX_Mutex
-    DWORD o=GET_OWNER(_m);
-    UNSET_OWNER(_m);
     if (!ReleaseMutex(_m->h)) {
         /* restore our own bookkeeping */
-        SET_OWNER(_m);
         return mutex_unref(m,EPERM);
     }
+    UNSET_OWNER(_m);
 #else /* USE_MUTEX_CriticalSection */
     UNSET_OWNER(_m);
     LeaveCriticalSection(&_m->cs.cs);
@@ -297,18 +292,19 @@ int _mutex_trylock(pthread_mutex_t *m)
 {
     int r = 0;
     mutex_t *_m = (mutex_t *)*m;
-    if (COND_LOCKED(_m))
+    if (_m->type != PTHREAD_MUTEX_NORMAL)
     {
-      if (_m->type == PTHREAD_MUTEX_RECURSIVE)
+      if (COND_LOCKED(_m))
       {
-	if (COND_OWNER(_m))
+	if (_m->type == PTHREAD_MUTEX_RECURSIVE && COND_OWNER(_m))
 	{
 	  InterlockedIncrement(&_m->count);
 	  return 0;
 	}
+	return EBUSY;
       }
+    } else if (COND_LOCKED(_m))
       return EBUSY;
-    }
 #if defined USE_MUTEX_Mutex
     switch (WaitForSingleObject(_m->h, 0)) {
         case WAIT_TIMEOUT:

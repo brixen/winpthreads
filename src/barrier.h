@@ -16,6 +16,7 @@ struct barrier_t
     int busy;
     int count;
     int total;
+    int share;
     pthread_mutex_t m;
     pthread_cond_t c;
 };
