@@ -267,7 +267,7 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
         if (!COND_LOCKED(_m))
             return mutex_unref(m,EPERM);
     }
-    else if (!COND_OWNER(_m))
+    else if (!COND_LOCKED(_m) || !COND_OWNER(_m))
         return mutex_unref(m,EPERM);
     if (_m->type == PTHREAD_MUTEX_RECURSIVE)
     {
@@ -371,7 +371,10 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
     _m->count = 0;
 
     if (a) {
+        int share = PTHREAD_PROCESS_SHARED;
         r = pthread_mutexattr_gettype(a, &_m->type);
+        if (!r) r = pthread_mutexattr_getpshared(a, &share);
+        if (!r && share == PTHREAD_PROCESS_SHARED) r = ENOSYS;
     }
     if (!r) {
 #if defined USE_MUTEX_Mutex
@@ -397,6 +400,7 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
     {
         _m->valid = DEAD_MUTEX;
         free(_m);
+        *m = NULL;
         return r;
     }
     if (InterlockedExchange(&InitOnce, 0))
@@ -432,18 +436,21 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 
 int pthread_mutexattr_init(pthread_mutexattr_t *a)
 {
-    *a = 0;
+    *a = PTHREAD_MUTEX_NORMAL | (PTHREAD_PROCESS_PRIVATE << 3);
     return 0;
 }
 
 int pthread_mutexattr_destroy(pthread_mutexattr_t *a)
 {
-    (void) a;
+    if (!a)
+      return EINVAL;
     return 0;
 }
 
 int pthread_mutexattr_gettype(pthread_mutexattr_t *a, int *type)
 {
+    if (!a || !type)
+      return EINVAL;
     *type = *a & 3;
 
     return 0;
@@ -451,7 +458,8 @@ int pthread_mutexattr_gettype(pthread_mutexattr_t *a, int *type)
 
 int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type)
 {
-    if ((unsigned) type > 3) return EINVAL;
+    if (!a || (type != PTHREAD_MUTEX_NORMAL && type != PTHREAD_MUTEX_RECURSIVE && type != PTHREAD_MUTEX_ERRORCHECK))
+      return EINVAL;
     *a &= ~3;
     *a |= type;
 
@@ -460,19 +468,29 @@ int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type)
 
 int pthread_mutexattr_getpshared(pthread_mutexattr_t *a, int *type)
 {
-    *type = *a & 4;
+    if (!a || !type)
+      return EINVAL;
+    *type = (*a & 4 ? PTHREAD_PROCESS_SHARED : PTHREAD_PROCESS_PRIVATE);
 
     return 0;
 }
 
 int pthread_mutexattr_setpshared(pthread_mutexattr_t * a, int type)
 {
-    if ((type & 4) != type) return EINVAL;
+    int r = 0;
+    if (!a || (type != PTHREAD_PROCESS_SHARED && type != PTHREAD_PROCESS_PRIVATE))
+      return EINVAL;
+    if (type == PTHREAD_PROCESS_SHARED)
+    {
+      type = PTHREAD_PROCESS_PRIVATE;
+      r = ENOSYS;
+    }
+    type = (type == PTHREAD_PROCESS_SHARED ? 4 : 0);
 
     *a &= ~4;
     *a |= type;
 
-    return 0;
+    return r;
 }
 
 int pthread_mutexattr_getprotocol(pthread_mutexattr_t *a, int *type)
