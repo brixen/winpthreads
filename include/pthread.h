@@ -67,20 +67,20 @@
 
 /* A few ways to implement pthread_cond:  */
 /* default.  */
-//#define USE_COND_Semaphore 1
+#define USE_COND_Semaphore 1
 /* USE_COND_SignalObjectAndWait has a flaw at timeout, hopefully fixed.  */
 //#define USE_COND_SignalObjectAndWait 1
 /* USE_COND_ConditionVariable is Windows Vista+, NOT cross-process.  */
-#define USE_COND_ConditionVariable 1
+//#define USE_COND_ConditionVariable 1
 
 /* A few ways to implement pthread_rwlock:  */
 /* default, use pthread_cond above.  */
-//#define USE_RWLOCK_pthread_cond 1
+#define USE_RWLOCK_pthread_cond 1
 /* USE_RWLOCK_SRWLock is Windows Vista+, NOT cross-process.  */
-#define USE_RWLOCK_SRWLock 1
+//#define USE_RWLOCK_SRWLock 1
 
 /* Experimental, use a synchronization object for timed waits:  */
-#define USE_RWLOCK_SRWLock_Sync 1
+//#define USE_RWLOCK_SRWLock_Sync 1
 
 /* Dependencies:  */
 #ifdef USE_SPINLOCK_EPERM /* need the owner */
@@ -137,8 +137,8 @@
 #define PTHREAD_MUTEX_ERRORCHECK 1
 #define PTHREAD_MUTEX_RECURSIVE 2
 #define PTHREAD_MUTEX_DEFAULT PTHREAD_MUTEX_NORMAL
-#define PTHREAD_MUTEX_SHARED 4
-#define PTHREAD_MUTEX_PRIVATE 0
+#define PTHREAD_MUTEX_SHARED 0
+#define PTHREAD_MUTEX_PRIVATE 1
 #define PTHREAD_PRIO_NONE 0
 #define PTHREAD_PRIO_INHERIT 8
 #define PTHREAD_PRIO_PROTECT 16
