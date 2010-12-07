@@ -786,7 +786,7 @@ int pthread_detach(pthread_t t)
     {
       return EINVAL;
     }
-    if (tv->ended) r = ESRCH;
+    //if (tv->ended) r = ESRCH;
     dw = tv->h;
     tv->h = 0;
     tv->p_state |= PTHREAD_CREATE_DETACHED;
