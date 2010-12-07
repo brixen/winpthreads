@@ -63,7 +63,7 @@ void * func(void * arg)
 int
 main()
 {
-  long result = 0;
+  intptr_t result = 0;
   pthread_t t;
   int CPUs;
   struct _timeb sysTime;

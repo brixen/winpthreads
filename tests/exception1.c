@@ -86,7 +86,7 @@ void *
 exceptionedThread(void * arg)
 {
   int dummy = 0;
-  int result = ((int)PTHREAD_CANCELED + 1);
+  intptr_t result = ((intptr_t)PTHREAD_CANCELED + 1);
   /* Set to async cancelable */
 
   assert(pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL) == 0);
@@ -139,7 +139,7 @@ exceptionedThread(void * arg)
 void *
 canceledThread(void * arg)
 {
-  int result = ((int)PTHREAD_CANCELED + 1);
+  intptr_t result = ((intptr_t)PTHREAD_CANCELED + 1);
   int count;
 
   /* Set to async cancelable */
@@ -226,17 +226,17 @@ main()
   for (i = 0; i < NUMTHREADS; i++)
     {
       int fail = 0;
-      int result = 0;
+      intptr_t result = 0;
 
 	/* Canceled thread */
       assert(pthread_join(ct[i], (void **) &result) == 0);
-      assert(!(fail = (result != (int) PTHREAD_CANCELED)));
+      assert(!(fail = (result != (intptr_t) PTHREAD_CANCELED)));
 
       failed = (failed || fail);
 
       /* Exceptioned thread */
       assert(pthread_join(et[i], (void **) &result) == 0);
-      assert(!(fail = (result != ((int) PTHREAD_CANCELED + 2))));
+      assert(!(fail = (result != ((intptr_t) PTHREAD_CANCELED + 2))));
 
       failed = (failed || fail);
     }

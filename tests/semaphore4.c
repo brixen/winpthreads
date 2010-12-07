@@ -113,9 +113,9 @@ main()
 //printf("value = %d\n", -value); fflush(stdout);
 	assert(pthread_cancel(t[50]) == 0);
 	  {
-	    int result;
+	    intptr_t result = 0;
 	    assert(pthread_join(t[50], (void **) &result) == 0);
-//	    printf("result = %d\n", result); fflush(stdout);
+//	    printf("result = %d\n", (int) result); fflush(stdout);
 	  }
 	assert(sem_getvalue(&s, &value) == 0);
 //printf("value = %d\n", -value); fflush(stdout);

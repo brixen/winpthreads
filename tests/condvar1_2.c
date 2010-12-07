@@ -89,7 +89,7 @@ int
 main()
 {
   int i, j, k;
-  int result = -1;
+  intptr_t result = 0;
   pthread_t t;
 
   for (k = 0; k < NUM_LOOPS; k++)

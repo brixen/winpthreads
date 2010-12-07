@@ -36,7 +36,7 @@ DLL_VER	= 2
 .PRECIOUS: $(*.exe) $(*.pass)
 .SECONDARY:
 
-CC	= gcc
+CC	= x86_64-w64-mingw32-gcc
 CP	= cp -f
 MV	= mv -f
 RM	= rm -f
@@ -170,37 +170,37 @@ all:
 	@ $(MAKE) clean GCE
 
 GC:
-	$(MAKE) TEST=GC CC=gcc XXCFLAGS="-fopenmp -D__CLEANUP_C" all-pass
+	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-fopenmp -D__CLEANUP_C" all-pass
 
 GCE:
-	$(MAKE) TEST=GCE CC=g++ XXCFLAGS="-fopenmp -mthreads -D__CLEANUP_CXX" all-pass
+	$(MAKE) TEST=GCE CC=x86_64-w64-mingw32-g++ XXCFLAGS="-fopenmp -mthreads -D__CLEANUP_CXX" all-pass
 
 GCX:
-	$(MAKE) TEST=GC CC=g++ XXCFLAGS="-fopenmp -mthreads -D__CLEANUP_C" all-pass
+	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-g++ XXCFLAGS="-fopenmp -mthreads -D__CLEANUP_C" all-pass
 
 GC-bench:
-	$(MAKE) TEST=GC CC=gcc XXCFLAGS="-D__CLEANUP_C" XXLIBS="benchlib.o" all-bench
+	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-D__CLEANUP_C" XXLIBS="benchlib.o" all-bench
 
 GC-bench-static:
-	$(MAKE) TEST=GC CC=gcc XXCFLAGS="-D__CLEANUP_C -DPTW32_STATIC_LIB" XXLIBS="benchlib.o -lws2_32" all-bench
+	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-D__CLEANUP_C -DPTW32_STATIC_LIB" XXLIBS="benchlib.o -lws2_32" all-bench
 
 GCE-bench:
-	$(MAKE) TEST=GCE  CC=g++ XXCFLAGS="-mthreads -D__CLEANUP_CXX" XXLIBS="benchlib." all-bench
+	$(MAKE) TEST=GCE  CC=x86_64-w64-mingw32-g++ XXCFLAGS="-mthreads -D__CLEANUP_CXX" XXLIBS="benchlib." all-bench
 
 GC-debug:
-	$(MAKE) TEST=GC CC=gcc XXCFLAGS="-fopenmp -D__CLEANUP_C" DLL_VER="$(DLL_VER)d" all-pass
+	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-fopenmp -D__CLEANUP_C" DLL_VER="$(DLL_VER)d" all-pass
 
 GC-static:
-	$(MAKE) TEST=GC CC=gcc XXCFLAGS="-D__CLEANUP_C -DPTW32_STATIC_LIB" XXLIBS="-lws2_32" DLL="" all-static
+	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-D__CLEANUP_C -DPTW32_STATIC_LIB" XXLIBS="-lws2_32" DLL="" all-static
 
 GC-stress:
 	$(ECHO) Stress tests can take a long time since they are trying to
 	$(ECHO) expose weaknesses that may be intermittant or statistically rare.
 	$(ECHO) A pass does not prove correctness, but may give greater confidence.
-	$(MAKE) TEST=GC CC=gcc XXCFLAGS="-D__CLEANUP_C" XXLIBS="" all-stress
+	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-D__CLEANUP_C" XXLIBS="" all-stress
 
 GCE-stress:
-	$(MAKE) TEST=GCE  CC=g++ XXCFLAGS="-mthreads -D__CLEANUP_CXX" XXLIBS="" all-stress
+	$(MAKE) TEST=GCE  CC=x86_64-w64-mingw32-g++ XXCFLAGS="-mthreads -D__CLEANUP_CXX" XXLIBS="" all-stress
 
 all-pass: $(PASSES)
 	@ $(ECHO) ALL TESTS PASSED! Congratulations!
@@ -354,20 +354,20 @@ valid2.pass: valid1.pass
 runall.pass:
 sizes.pass: sizes.exe
 	@ $(ECHO) Running $*
-	$< > SIZES.$(TEST)
+	./$< > SIZES.$(TEST)
 	@ $(CAT) SIZES.$(TEST)
 	@ $(ECHO) Passed
 	@ $(TOUCH) $@
 
 %.pass: %.exe
 	@ $(ECHO) Running $*
-	$*
+	./$*
 	@ $(ECHO) Passed
 	@ $(TOUCH) $@
 
 %.bench: $(LIB) $(DLL) $(HDR) $(QAPC) $(XXLIBS) %.exe
 	@ $(ECHO) Running $*
-	$*
+	./$*
 	@ $(ECHO) Done
 	@ $(TOUCH) $@
 

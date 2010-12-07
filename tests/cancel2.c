@@ -97,7 +97,7 @@ static pthread_mutex_t waitLock = PTHREAD_MUTEX_INITIALIZER;
 void *
 mythread(void * arg)
 {
-  int result = 0;
+  intptr_t result = 0;
   bag_t * bag = (bag_t *) arg;
 
   assert(bag == &threadbag[bag->threadnum]);
@@ -217,16 +217,16 @@ main()
   for (i = 1; i <= NUMTHREADS; i++)
     {
       int fail = 0;
-      int result = 0;
+      intptr_t result = 0;
 
       assert(pthread_join(t[i], (void **) &result) == 0);
-      fail = (result != (int) PTHREAD_CANCELED);
+      fail = (result != (intptr_t) PTHREAD_CANCELED);
       if (fail)
 	{
 	  fprintf(stderr, "Thread %d: started %d: location %d: cancel type %s\n",
 		  i,
 		  threadbag[i].started,
-		  result,
+		  (int)result,
 		  ((result % 2) == 0) ? "ASYNCHRONOUS" : "DEFERRED");
 	}
       failed |= fail;

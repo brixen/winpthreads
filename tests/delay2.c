@@ -65,7 +65,7 @@ int
 main(int argc, char * argv[])
 {
   pthread_t t;
-  int result = 0;
+  intptr_t result = 0;
 
   assert(pthread_mutex_lock(&mx) == 0);
 
@@ -75,7 +75,7 @@ main(int argc, char * argv[])
   assert(pthread_mutex_unlock(&mx) == 0);
 
   assert(pthread_join(t, (void **) &result) == 0);
-  assert(result == (int) (size_t) PTHREAD_CANCELED);
+  assert(result == (intptr_t) PTHREAD_CANCELED);
 
   return 0;
 }

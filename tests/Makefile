@@ -214,19 +214,19 @@ sizes.pass: sizes.exe
 
 $(PASSES): $*.exe
 	@ $(ECHO) ... Running $(TEST) test: $*.exe
-	@ .\$*.exe
+	@ $(ECHO) .\$*.exe
 	@ $(ECHO) ...... Passed
 	@ $(TOUCH) $*.pass
 
 $(BENCHRESULTS): $*.exe
 	@ $(ECHO) ... Running $(TEST) benchtest: $*.exe
-	@ .\$*.exe
+	@ $(ECNO) .\$*.exe
 	@ $(ECHO) ...... Done
 	@ $(TOUCH) $*.bench
 
 $(STRESSRESULTS): $*.exe
 	@ $(ECHO) ... Running $(TEST) stresstest: $*.exe
-	@ .\$*.exe
+	@ $(ECHO) .\$*.exe
 	@ $(ECHO) ...... Done
 	@ $(TOUCH) $*.pass
 

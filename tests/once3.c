@@ -98,7 +98,9 @@ main()
 {
   pthread_t t[NUM_THREADS][NUM_ONCE];
   int i, j;
-  
+
+  //printf ("Is ok\n");
+  //return 1;  
   InitializeCriticalSection(&numThreads.cs);
   InitializeCriticalSection(&numOnce.cs);
 

@@ -41,7 +41,7 @@
 #include "test.h"
  
 pthread_barrier_t barrier = NULL;
-static int result = 1;
+static intptr_t result = 1;
 
 void * func(void * arg)
 {

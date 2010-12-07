@@ -124,7 +124,7 @@ main()
 {
   int i;
   pthread_t t[NUMTHREADS + 1];
-  int result = 0;
+  intptr_t result = 0;
   struct _timeb currSysTime;
   const DWORD NANOSEC_PER_MILLISEC = 1000000;
   cond_print_set(1,stderr);
@@ -167,7 +167,7 @@ main()
   for (i = 1; i <= NUMTHREADS; i++)
     {
       assert(pthread_join(t[i], (void **) &result) == 0);
-        assert(result == i);
+        assert((int) result == i);
     }
 
       fprintf(stderr, "awk = %d\n", awoken);

@@ -50,7 +50,7 @@ main(int argc, char * argv[])
 {
 	pthread_t id[4];
 	int i;
-	int result;
+	intptr_t result = 0;
 
 	/* Create a few threads and then exit. */
 	for (i = 0; i < 4; i++)
@@ -61,7 +61,7 @@ main(int argc, char * argv[])
 	for (i = 0; i < 4; i++)
 	  {
 	    assert(pthread_join(id[i], (void **) &result) == 0);
-	    assert(result == i);
+	    assert((int) result == i);
 	  }
 
 	/* Success. */

@@ -183,7 +183,7 @@ main()
    */
   for (i = 1; i < NUM_THREADS; i++)
     {
-	int result = 0;
+	intptr_t result = 0;
 
 	assert(pthread_join(thread[i], (void **) &result) == 0);
     }

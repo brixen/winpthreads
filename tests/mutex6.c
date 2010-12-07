@@ -46,18 +46,18 @@
 
 #include "test.h"
 
-static int lockCount = 0;
+static volatile int lockCount = 0;
 
 static pthread_mutex_t mutex;
 
 void * locker(void * arg)
 {
   assert(pthread_mutex_lock(&mutex) == 0);
-  lockCount++;
+  InterlockedIncrement((long *)&lockCount);
 
   /* Should wait here (deadlocked) */
   assert(pthread_mutex_lock(&mutex) == 0);
-  lockCount++;
+  InterlockedIncrement((long *)&lockCount);
   assert(pthread_mutex_unlock(&mutex) == 0);
 
   return 0;
@@ -74,6 +74,7 @@ main()
 
   Sleep(1000);
 
+  printf("lockCount = %d\n", lockCount);
   assert(lockCount == 1);
 
   /*

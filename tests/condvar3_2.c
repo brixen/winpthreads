@@ -125,7 +125,7 @@ main()
 {
   int i;
   pthread_t t[NUMTHREADS + 1];
-  int result = 0;
+  intptr_t result = 0;
   struct _timeb currSysTime;
   const DWORD NANOSEC_PER_MILLISEC = 1000000;
 
@@ -152,7 +152,7 @@ main()
   for (i = 1; i <= NUMTHREADS; i++)
     {
       assert(pthread_join(t[i], (void **) &result) == 0);
-	assert(result == i);
+	assert((int)result == i);
       /*
        * Approximately 2/3rds of the threads are expected to time out.
        * Signal the remainder after some threads have woken up and exited

@@ -74,7 +74,7 @@ int
 main()
 {
   pthread_t t;
-  int result = 0;
+  intptr_t result = 0;
   int mxType = -1;
 
   assert(pthread_mutexattr_init(&mxAttr) == 0);

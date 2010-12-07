@@ -72,7 +72,7 @@ int
 main()
 {
   pthread_t t;
-  int result = 0;
+  intptr_t result = 0;
 
   assert(mutex == PTHREAD_RECURSIVE_MUTEX_INITIALIZER);
 

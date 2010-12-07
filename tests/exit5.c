@@ -95,11 +95,7 @@ struct bag_t_ {
 
 static bag_t threadbag[NUMTHREADS + 1];
 
-#if ! defined (__MINGW32__) || defined (__MSVCRT__)
-unsigned __stdcall
-#else
 void
-#endif
 Win32thread(void * arg)
 {
   int result = 1;
@@ -132,11 +128,7 @@ main()
     {
       threadbag[i].started = 0;
       threadbag[i].threadnum = i;
-#if ! defined (__MINGW32__) || defined (__MSVCRT__)
       h[i] = (HANDLE) _beginthreadex(NULL, 0, Win32thread, (void *) &threadbag[i], 0, &thrAddr);
-#else
-      h[i] = (HANDLE) _beginthread(Win32thread, 0, (void *) &threadbag[i]);
-#endif
     }
 
   /*
@@ -172,14 +164,7 @@ main()
       int fail = 0;
       int result = 0;
 
-#if ! defined (__MINGW32__) || defined (__MSVCRT__)
       assert(GetExitCodeThread(h[i], (LPDWORD) &result) == TRUE);
-#else
-      /*
-       * Can't get a result code.
-       */
-      result = 1;
-#endif
 
       assert(threadbag[i].self->h != NULL && pthread_kill(threadbag[i].self, 0) == ESRCH);
 

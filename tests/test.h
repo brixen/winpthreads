@@ -54,14 +54,7 @@
 
 #define PTW32_THREAD_NULL_ID {NULL,0}
 
-#if defined(__MINGW32__)
 #include <stdint.h>
-#elif defined(__BORLANDC__)
-#define int64_t ULONGLONG
-#else
-#define int64_t _int64
-#endif
-
 
 const char * error_string[] = {
   "ZERO_or_EOK",

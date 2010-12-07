@@ -113,7 +113,7 @@ increment_pop_count(void * arg)
 void *
 mythread(void * arg)
 {
-  int result = 0;
+  intptr_t result = 0;
   bag_t * bag = (bag_t *) arg;
 
   assert(bag == &threadbag[bag->threadnum]);
@@ -183,7 +183,7 @@ main()
   for (i = 1; i <= NUMTHREADS; i++)
     {
       int fail = 0;
-      int result = 0;
+      intptr_t result = 0;
 
       assert(pthread_join(t[i], (void **) &result) == 0);
 
@@ -194,7 +194,7 @@ main()
 	  fprintf(stderr, "Thread %d: started %d: result: %d\n",
 		  i,
 		  threadbag[i].started,
-		  result);
+		  (int)result);
 	}
       failed = (failed || fail);
     }

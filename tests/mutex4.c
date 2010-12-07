@@ -50,9 +50,11 @@ static pthread_mutex_t mutex1;
 void * unlocker(void * arg)
 {
   int expectedResult = (int) (size_t) arg;
-
+  int h;
   wasHere++;
-  assert(pthread_mutex_unlock(&mutex1) == expectedResult);
+  h = pthread_mutex_unlock(&mutex1);
+  printf("*** %d==%d\n\n", h, expectedResult); fflush(stdout);
+  assert(h == expectedResult);
   wasHere++;
   return NULL;
 }

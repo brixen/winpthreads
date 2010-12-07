@@ -140,8 +140,8 @@ main()
   pthread_t t[NUM_THREADS][NUM_ONCE];
   int i, j, cpus;
   
-  fprintf(stderr, "Skipped (hangs)\n");
-  return 1;
+  //fprintf(stderr, "Skipped (hangs)\n");
+  //return 1;
   InitializeCriticalSection(&print_lock);
   InitializeCriticalSection(&numThreads.cs);
   InitializeCriticalSection(&numOnce.cs);

@@ -60,11 +60,11 @@
 int main() {
   HINSTANCE hinst;
 
-  assert((hinst = LoadLibrary("pthread")) != (HINSTANCE) 0);
+  //assert((hinst = LoadLibrary("pthread")) != (HINSTANCE) 0);
 
   Sleep(100);
 
-  FreeLibrary(hinst);
+  //FreeLibrary(hinst);
   return 0;
 }
 
