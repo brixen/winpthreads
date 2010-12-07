@@ -362,9 +362,12 @@ pthread_t pthread_self(void)
         /* If cannot initialize main thread, then the only thing we can do is abort */
         if (!t) abort();
 
-        t->p_state = PTHREAD_DEFAULT_ATTR;
-        t->h = GetCurrentThread();
+        t->p_state = PTHREAD_DEFAULT_ATTR /*| PTHREAD_CREATE_DETACHED*/;
         t->tid = GetCurrentThreadId();
+        t->sched_pol = SCHED_OTHER;
+        t->sched.sched_priority = THREAD_PRIORITY_NORMAL;
+        t->ended = 0;
+	t->h = GetCurrentThread();
 
         /* Save for later */
         if (!TlsSetValue(_pthread_tls, t)) abort();
@@ -384,6 +387,13 @@ pthread_t pthread_self(void)
             {
               rslt = (unsigned) (size_t) t->ret_arg;
               t->ended = 1;
+              if ((t->p_state & PTHREAD_CREATE_DETACHED) == PTHREAD_CREATE_DETACHED)
+              {
+                CloseHandle (t->h);
+                free (t);
+                t = NULL;
+                TlsSetValue(_pthread_tls, t);
+              }
             }
 
             /* Time to die */
@@ -680,12 +690,20 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     tv->p_state = PTHREAD_DEFAULT_ATTR;
     tv->h = (HANDLE) -1;
     tv->valid = LIFE_THREAD;
+    tv->sched.sched_priority = THREAD_PRIORITY_NORMAL;
+    tv->sched_pol = SCHED_OTHER;
  
     if (attr)
     {
+        int inh = 0;
         tv->p_state = attr->p_state;
         tv->sched.sched_priority = attr->param.sched_priority;
         ssize = attr->s_size;
+        pthread_attr_getinheritsched (attr, &inh);
+        if (inh)
+        {
+          tv->sched.sched_priority = ((struct _pthread_v *)pthread_self())->sched.sched_priority;
+	}
     }
 
     /* Make sure tv->h has value of -1 */

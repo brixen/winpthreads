@@ -39,10 +39,11 @@ spinlock_static_init (volatile pthread_spinlock_t *s )
 int pthread_spin_init(pthread_spinlock_t *l, int pshared)
 {
     spin_t *_l;
-    (void) pshared;
-
+    
     if (!l) return EINVAL; 
-    if (pshared != PTHREAD_PROCESS_SHARED && pshared != PTHREAD_PROCESS_PRIVATE) return ENOTSUP; 
+    if (pshared == PTHREAD_PROCESS_SHARED)
+      return ENOSYS;
+    if (pshared != PTHREAD_PROCESS_SHARED && pshared != PTHREAD_PROCESS_PRIVATE) return EINVAL;
     if (!(_l = (pthread_spinlock_t)calloc(1, sizeof(*_l))))
         return ENOMEM;
 

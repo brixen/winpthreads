@@ -64,12 +64,14 @@ inline int cond_static_init(volatile pthread_cond_t *c)
 
 int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
 {
-    int r = cond_ref_init(c);
-    if(r) return r;
-
     cond_t *_c;
-
-    (void) a;
+    int r = 0;
+    
+    if (!c)
+      return EINVAL;
+    *c = NULL;
+    if (a && *a == PTHREAD_PROCESS_SHARED)
+      return ENOSYS;
 
     if ( !(_c = (pthread_cond_t)calloc(1,sizeof(*_c))) ) {
         return ENOMEM; 
@@ -87,6 +89,7 @@ int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
         0x7fffffff, /* max count */
         NULL);      /* unnamed  */
     if (_c->sema_ == NULL) {
+        free (_c);
         r = EAGAIN;
     } else {
         InitializeCriticalSection(&_c->waiters_count_lock_);
@@ -118,6 +121,11 @@ int pthread_cond_destroy(pthread_cond_t *c)
     if(!cDestroy) return 0; /* destroyed a (still) static initialized cond */
 
     cond_t *_c = (cond_t *)cDestroy;
+    if (_c->waiters_count_ != 0)
+    {
+      *c = cDestroy;
+      return EBUSY;
+    }
 #if defined  USE_COND_ConditionVariable
     /* There is indeed no DeleteConditionVariable */
 
@@ -218,6 +226,9 @@ int pthread_cond_wait (pthread_cond_t *c,
                               pthread_mutex_t *external_mutex)
 {
     int r = cond_ref_wait(c,external_mutex);
+#if defined USE_COND_SignalObjectAndWait
+    int last_waiter;
+#endif
     if(r) return r;
 
     cond_t *_c = (cond_t *)*c;
@@ -230,7 +241,7 @@ int pthread_cond_wait (pthread_cond_t *c,
 
     /* Avoid race conditions. */
     EnterCriticalSection (&_c->waiters_count_lock_);
-    _c->waiters_count_++;
+    InterlockedIncrement((long *)&_c->waiters_count_);
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
     /* This call atomically releases the mutex and waits on the */
@@ -243,10 +254,8 @@ int pthread_cond_wait (pthread_cond_t *c,
     EnterCriticalSection (&_c->waiters_count_lock_);
 
     /* We're no longer waiting... */
-    _c->waiters_count_--;
-
     /* Check to see if we're the last waiter after <pthread_cond_broadcast>. */
-    int last_waiter = _c->was_broadcast_ && _c->waiters_count_ == 0;
+    last_waiter = _c->was_broadcast_ && InterlockedDecrement((long *)&_c->waiters_count_) == 0;
 
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
@@ -271,7 +280,7 @@ int pthread_cond_wait (pthread_cond_t *c,
     DWORD dwr;
 
     EnterCriticalSection (&_c->waiters_count_lock_);
-    _c->waiters_count_++;
+    InterlockedIncrement((long *)&_c->waiters_count_);
     LeaveCriticalSection (&_c->waiters_count_lock_);
     pthread_mutex_unlock(external_mutex);
     dwr = WaitForSingleObject(_c->sema_, INFINITE);
@@ -291,7 +300,7 @@ int pthread_cond_wait (pthread_cond_t *c,
     }
     pthread_mutex_lock(external_mutex);
     EnterCriticalSection (&_c->waiters_count_lock_);
-    _c->waiters_count_--;
+    InterlockedDecrement((long *)&_c->waiters_count_);
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
 #endif /* USE_COND_SignalObjectAndWait */
@@ -302,6 +311,9 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 {
     DWORD dwr;
     int r = cond_ref_wait(c,external_mutex);
+#if defined USE_COND_SignalObjectAndWait
+    int last_waiter;
+#endif
     if(r) return r;
 
     cond_t *_c = (cond_t *)*c;
@@ -316,7 +328,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 
     /* Avoid race conditions. */
     EnterCriticalSection (&_c->waiters_count_lock_);
-    _c->waiters_count_++;
+    InterlockedIncrement((long *)&_c->waiters_count_);
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
     /* This call atomically releases the mutex and waits on the */
@@ -342,7 +354,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     }
     if (r) {
         EnterCriticalSection (&_c->waiters_count_lock_);
-        _c->waiters_count_--;
+        InterlockedDecrement((long *)&_c->waiters_count_);
         LeaveCriticalSection (&_c->waiters_count_lock_);
         return r;
     }
@@ -351,10 +363,8 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     EnterCriticalSection (&_c->waiters_count_lock_);
 
     /* We're no longer waiting... */
-    _c->waiters_count_--;
-
     /* Check to see if we're the last waiter after <pthread_cond_broadcast>. */
-    int last_waiter = _c->was_broadcast_ && _c->waiters_count_ == 0;
+    last_waiter = _c->was_broadcast_ && InterlockedDecrement((long *)&_c->waiters_count_) == 0;
 
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
@@ -381,7 +391,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 
 #else /*default USE_COND_Semaphore */
     EnterCriticalSection (&_c->waiters_count_lock_);
-    _c->waiters_count_++;
+    InterlockedIncrement((long *)&_c->waiters_count_);
     LeaveCriticalSection (&_c->waiters_count_lock_);
     pthread_mutex_unlock(external_mutex);
 
@@ -402,7 +412,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     }
     pthread_mutex_lock(external_mutex);
     EnterCriticalSection (&_c->waiters_count_lock_);
-    _c->waiters_count_--;
+    InterlockedDecrement((long *)&_c->waiters_count_);
     LeaveCriticalSection (&_c->waiters_count_lock_);
 
 #endif /* USE_COND_SignalObjectAndWait */

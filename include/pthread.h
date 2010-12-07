@@ -225,7 +225,7 @@ struct itimerspec {
 #define SCHED_MAX       SCHED_RR
 
 struct sched_param {
-  int sched_priority ;
+  int sched_priority;
 };
 
 typedef struct pthread_attr_t pthread_attr_t;

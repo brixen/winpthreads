@@ -284,19 +284,6 @@ inline int cond_ref_destroy(volatile pthread_cond_t *cond, pthread_cond_t *cDest
     return r;
 }
 
-inline int cond_ref_init(volatile pthread_cond_t *cond )
-{
-    int r = 0;
-
-    _spin_lite_lock(&cond_global);
-    
-    if (!cond)  r = EINVAL;
-
-    _spin_lite_unlock(&cond_global);
-    return r;
-}
-
-
 inline int barrier_unref(volatile pthread_barrier_t *barrier, int res)
 {
     _spin_lite_lock(&barrier_global);

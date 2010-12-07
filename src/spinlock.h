@@ -6,6 +6,7 @@
         || ( ((spin_t *)(*l))->valid != (unsigned int)LIFE_SPINLOCK ) ) \
         return EINVAL; }
 
+#undef USE_SPINLOCK_DEADLK
 #ifdef USE_SPINLOCK_DEADLK
 
 #define CHECK_DEADLK_SL(l)	if (l->owner == GetCurrentThreadId()) \
@@ -37,6 +38,7 @@
 #define _spin_lite_lock_dec(c)
 #endif
 
+#undef USE_SPINLOCK_EPERM
 #ifdef USE_SPINLOCK_EPERM
 #define CHECK_PERM_SL(l)	if (l->owner != GetCurrentThreadId()) \
                                 return EPERM
@@ -50,8 +52,8 @@
 typedef struct spin_t spin_t;
 struct spin_t
 {
-    unsigned int valid;   
     DWORD owner;
+    unsigned int valid;   
     LONG l;   
 };
 

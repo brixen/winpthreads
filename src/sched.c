@@ -47,16 +47,41 @@ int pthread_attr_getschedparam(const pthread_attr_t *attr, struct sched_param *p
     return r;
 }
 
+static int pthread_check(pthread_t t)
+{
+  DWORD dwFlags;
+  if (!t)
+  {
+        return ESRCH;
+  }
+  else if (!(t->h) || t->h == INVALID_HANDLE_VALUE)
+  {
+  	if (t->ended == 0)
+  	  return 0;
+        return ESRCH;
+  }
+  else if ((!GetHandleInformation(t->h, &dwFlags) && t->ended))
+  {
+        return ESRCH;
+  }
+  return 0;
+}
+
 int pthread_getschedparam(pthread_t t, int *pol, struct sched_param *p)
 {
     int r;
+    if (!t)
+      t = pthread_self();
 
-    if ((r = pthread_kill(t, 0) ))
+    if ((r = pthread_check(t)) != 0)
+    {
         return r;
+    }
 
-    if (pol == NULL || p == NULL)
+    if (!p || !pol)
+    {
         return EINVAL;
-
+    }
     *pol = t->sched_pol;
     p->sched_priority = t->sched.sched_priority;
 
@@ -66,8 +91,9 @@ int pthread_getschedparam(pthread_t t, int *pol, struct sched_param *p)
 int pthread_setschedparam(pthread_t t, int pol,  const struct sched_param *p)
 {
     int r, pr = 0;
+    if (!t) t = pthread_self();
 
-    if ((r = pthread_kill(t, 0)))
+    if ((r = pthread_check(t)) != 0)
         return r;
 
     if (pol < SCHED_MIN || pol > SCHED_MAX || p == NULL)
@@ -88,18 +114,18 @@ int pthread_setschedparam(pthread_t t, int pol,  const struct sched_param *p)
     THREAD_PRIORITY_TIME_CRITICAL   15
     */
     if (pr <= THREAD_PRIORITY_IDLE) {
-        pr = THREAD_PRIORITY_IDLE;
+        pr = THREAD_PRIORITY_LOWEST; //THREAD_PRIORITY_IDLE;
     } else if (pr <= THREAD_PRIORITY_LOWEST) {
         pr = THREAD_PRIORITY_LOWEST;
     } else if (pr >= THREAD_PRIORITY_TIME_CRITICAL) {
-        pr = THREAD_PRIORITY_TIME_CRITICAL;
+        pr = THREAD_PRIORITY_HIGHEST; // THREAD_PRIORITY_TIME_CRITICAL;
     } else if (pr >= THREAD_PRIORITY_HIGHEST) {
         pr = THREAD_PRIORITY_HIGHEST;
     }
 
     if (SetThreadPriority(t->h, pr)) {
         t->sched_pol = pol;
-        t->sched.sched_priority = pr;
+        t->sched.sched_priority = p->sched_priority;
     } else
         r = EINVAL;
     return r;
