@@ -79,6 +79,7 @@ int
 main()
 {
   int i, j;
+  void *pr;
   int result;
   int serialThreadsTotal;
   LONG Crossings;
@@ -103,7 +104,8 @@ main()
       serialThreadsTotal = 0;
       for (i = 1; i <= j; i++)
         {
-          assert(pthread_join(t[i], (void **) &result) == 0);
+          assert(pthread_join(t[i], (void **) &pr) == 0);
+	  result= (int) (size_t) pr;
           serialThreadsTotal += result;
         }
 
