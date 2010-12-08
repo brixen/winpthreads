@@ -3,16 +3,16 @@
 
 unsigned long long _pthread_time_in_ms(void)
 {
-    struct timeb tb;
+    struct _timeb tb;
 
-    ftime(&tb);
-    return tb.time * 1000 + tb.millitm;
+    _ftime(&tb);
+    return (unsigned long long)tb.time * 1000ULL + (unsigned long long) tb.millitm;
 }
 
 unsigned long long _pthread_time_in_ms_from_timespec(const struct timespec *ts)
 {
     unsigned long long t = ts->tv_sec * 1000;
-    t += ts->tv_nsec / 1000000;
+    t += (unsigned long long) ts->tv_nsec / 1000000ULL;
 
     return t;
 }

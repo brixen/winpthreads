@@ -389,6 +389,7 @@ pthread_t pthread_self(void)
               t->ended = 1;
               if ((t->p_state & PTHREAD_CREATE_DETACHED) == PTHREAD_CREATE_DETACHED)
               {
+                t->valid = DEAD_THREAD;
                 CloseHandle (t->h);
                 free (t);
                 t = NULL;
