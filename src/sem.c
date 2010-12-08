@@ -8,231 +8,305 @@
 #include "mutex.h"
 #include "ref.h"
 
+static int sem_result(int res)
+{
+  if (res != 0) {
+    errno = res;
+    return -1;
+  }
+  return 0;
+}
+
+
 int sem_init(sem_t *sem, int pshared, unsigned int value)
 {
-    _sem_t *s;
-    mode_t r;
+  _sem_t *sv;
 
-    if (value > (unsigned int)SEM_VALUE_MAX) {
-        return sem_result(EINVAL);
-    }
-    if (pshared != PTHREAD_PROCESS_PRIVATE) {
-        return sem_result(EPERM);
-    }
+  if (!sem || value > (unsigned int)SEM_VALUE_MAX)
+    return sem_result(EINVAL);
+  if (pshared != PTHREAD_PROCESS_PRIVATE)
+    return sem_result(EPERM);
 
-    r = sem_ref_init(sem);
-    if (r != 0)
-        return sem_result(r);
-
-    if (!(s = (sem_t)calloc(1,sizeof(*s))))
-       return sem_result(ENOMEM); 
-
-    if ((s->s = CreateSemaphore (NULL, value, SEM_VALUE_MAX, NULL)) == NULL) {
-        s->valid = DEAD_SEM;
-        free(s); 
-        return sem_result(ENOSPC); 
-    }
-    InitializeCriticalSectionAndSpinCount(&s->value_lock,USE_SEM_CriticalSection_SpinCount);
-
-    s->initial = s->value = value;
-    s->valid = LIFE_SEM;
-    *sem = s;
-
-    return 0;
+  if (!(sv = (sem_t)calloc(1,sizeof(*sv))))
+    return sem_result(ENOMEM); 
+  if (pthread_mutex_init(&sv->vlock, NULL) != 0)
+  {
+    sv->valid = DEAD_SEM;
+    free(sv);
+    return sem_result(ENOSPC);
+  }
+  if ((sv->s = CreateSemaphore (NULL, 0, SEM_VALUE_MAX, NULL)) == NULL)
+  {
+    pthread_mutex_destroy(&sv->vlock);
+    sv->valid = DEAD_SEM;
+    free(sv); 
+    return sem_result(ENOSPC); 
+  }
+  sv->value = value;
+  sv->valid = LIFE_SEM;
+  *sem = sv;
+  return 0;
 }
 
 int sem_destroy(sem_t *sem)
 {
-    sem_t sDestroy;
-    int r = sem_ref_destroy(sem,&sDestroy);
-    
-    if (r)
-      return sem_result(r);
+  _sem_t *sv;;
 
-    _sem_t *s = (_sem_t *)sDestroy;
-    
-    CloseHandle(s->s); /* no way back if this fails */
-    DeleteCriticalSection(&s->value_lock);
-    s->valid = DEAD_SEM;
-    free(sDestroy);
-
-    return 0;
+  if (!sem || (sv = *sem) == NULL)
+    return sem_result(EINVAL);
+  if (sem_result(pthread_mutex_lock(&sv->vlock)) != 0)
+    return -1;
+  if (sv->value < 0)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EBUSY);
+  }
+  if (!CloseHandle (sv->s))
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EINVAL);
+  }
+  sv->value = SEM_VALUE_MAX;
+  *sem = NULL;
+  pthread_mutex_unlock(&sv->vlock);
+  Sleep(0);
+  while (pthread_mutex_destroy (&sv->vlock) == EBUSY)
+    Sleep(0);
+  sv->valid = DEAD_SEM;
+  free (sv);
+  return 0;
 }
 
 int sem_trywait(sem_t *sem)
 {
-    int r = sem_ref(sem);
-    if(r) return r;
-     
-    _sem_t *s = (_sem_t *)*sem;
-    EnterCriticalSection (&s->value_lock);
-    if (s->value > 0) {
-        s->value--;
-    } else {
-        r = EAGAIN;
-    }
-    LeaveCriticalSection (&s->value_lock);
+  _sem_t *sv;
 
-    return sem_unref(sem,r);
-}
+  if (!sem || (sv = *sem) == NULL)
+    return sem_result(EINVAL);
+  if (sem_result(pthread_mutex_lock(&sv->vlock)) != 0)
+    return -1;
+  if (*sem == NULL)
+  {
+     pthread_mutex_unlock(&sv->vlock);
+     return sem_result(EINVAL);
+  }
+  if (sv->value <= 0)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EAGAIN);
+  }
+  sv->value--;
+  pthread_mutex_unlock(&sv->vlock);
 
-static void _sem_cleanup (void *arg)
-{
-     _sem_t *s = (_sem_t *)arg;
-    EnterCriticalSection (&s->value_lock);
-    if (WaitForSingleObject(s->s, 0) != WAIT_OBJECT_0) {
-        /* cleanup the wait state */
-        s->value ++;
-    }
-    LeaveCriticalSection (&s->value_lock);
+  return 0;
 }
 
 int sem_wait(sem_t *sem)
 {
-    int r = sem_ref(sem);
-    if(r) return r;
-    DWORD dwr;
-    unsigned int n;
-    
-    _sem_t *s = (_sem_t *)*sem;
-    pthread_testcancel();
-    EnterCriticalSection (&s->value_lock);
-    n = --s->value;
-    LeaveCriticalSection (&s->value_lock);
-    if (n<0) {
-        dwr = WaitForSingleObject(s->s, INFINITE);
-        switch (dwr) {
-        case WAIT_ABANDONED:
-            r = EINTR;
-            break;
-        case WAIT_OBJECT_0:
-            r = 0;
-            break;
-        default:
-            /*We can only return EINVAL though it might not be posix compliant  */
-            r = EINVAL;
-        }
-     }
-    if (r) {
-        EnterCriticalSection (&s->value_lock);
-        s->value++;
-        LeaveCriticalSection (&s->value_lock);
-    }
+  DWORD dwr;
+  int cur_v;
+  _sem_t *sv;;
 
-    return sem_unref(sem,r);
+  pthread_testcancel();
+  if (!sem || (sv = *sem) == NULL)
+    return sem_result(EINVAL);
+  if (sem_result (pthread_mutex_lock(&sv->vlock)) != 0)
+    return -1;
+  if (*sem == NULL)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EINVAL);
+  }
+  InterlockedDecrement((long *)&sv->value);
+  cur_v = sv->value;
+  pthread_mutex_unlock(&sv->vlock);
+
+  if (cur_v >= 0)
+  {
+    return 0;
+  }
+  do {
+    dwr = WaitForSingleObject(sv->s, 20);
+    switch (dwr)
+    {
+    case WAIT_TIMEOUT:
+      cur_v = ETIMEDOUT;
+      if (__pthread_shallcancel ())
+        cur_v = EINVAL;
+      break;
+    case WAIT_ABANDONED:
+	cur_v = EINTR;
+	break;
+    case WAIT_OBJECT_0:
+	return 0;
+    default:
+	/*We can only return EINVAL though it might not be posix compliant  */
+	cur_v = EINVAL;
+    }
+  } while (cur_v == ETIMEDOUT);
+  
+  if (*sem != NULL && pthread_mutex_lock(&sv->vlock) == 0)
+  {
+    if (WaitForSingleObject(sv->s, 0) != WAIT_OBJECT_0)
+      InterlockedIncrement((long*)&sv->value);
+    else
+      cur_v = 0;
+    pthread_mutex_unlock(&sv->vlock);
+  }
+  pthread_testcancel();
+  return sem_result(cur_v);
 }
 
 int sem_timedwait(sem_t *sem, const struct timespec *t)
 {
-    int r = sem_ref(sem);
-    if(r) return r;
-    DWORD dwr;
-    unsigned int n;
-    
-    _sem_t *s = (_sem_t *)*sem;
-    pthread_testcancel();
-    EnterCriticalSection (&s->value_lock);
-    n = --s->value;
-    LeaveCriticalSection (&s->value_lock);
-    dwr = (t==NULL) ? INFINITE : dwMilliSecs(_pthread_rel_time_in_ms(t));
-    if (n<0) {
-        dwr = WaitForSingleObject(s->s, dwr);
-        switch (dwr) {
-        case WAIT_TIMEOUT:
-            r = ETIMEDOUT;
-            break;
-        case WAIT_ABANDONED:
-            r = EINTR;
-            break;
-        case WAIT_OBJECT_0:
-            r = 0;
-            break;
-        default:
-            /*We can only return EINVAL though it might not be posix compliant  */
-            r = EINVAL;
-        }
-    }
-    if (r) {
-        EnterCriticalSection (&s->value_lock);
-        s->value++;
-        LeaveCriticalSection (&s->value_lock);
-    }
+  int cur_v;
+  DWORD dwr;
+  _sem_t *sv;;
 
-    return sem_unref(sem,r);
+  if (!t)
+    return sem_wait(sem);
+  dwr = dwMilliSecs(_pthread_rel_time_in_ms(t));
+  pthread_testcancel();
+  if (!sem || (sv = *sem) == NULL)
+    return sem_result(EINVAL);
+  if (sem_result(pthread_mutex_lock(&sv->vlock)) != 0)
+    return -1;
+  if (*sem == NULL)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EINVAL);
+  }
+  InterlockedDecrement((long*)&sv->value);
+  cur_v = sv->value;
+  pthread_mutex_unlock(&sv->vlock);
+
+  if (cur_v >= 0)
+    return 0;
+  dwr = WaitForSingleObject(sv->s, dwr);
+  switch (dwr)
+  {
+  case WAIT_TIMEOUT:
+      cur_v = ETIMEDOUT;
+      break;
+  case WAIT_ABANDONED:
+      cur_v = EINTR;
+      break;
+  case WAIT_OBJECT_0:
+      return 0;
+  default:
+      /*We can only return EINVAL though it might not be posix compliant  */
+      cur_v = EINVAL;
+  }
+  if (*sem != NULL && pthread_mutex_lock(&sv->vlock) == 0)
+  {
+    if (WaitForSingleObject(sv->s, 0) != WAIT_OBJECT_0)
+      InterlockedIncrement((long*)&sv->value);
+    else
+      cur_v = 0;
+    pthread_mutex_unlock(&sv->vlock);
+  }
+  return sem_result(cur_v);
 }
 
-int sem_post(sem_t * sem)
+int sem_post(sem_t *sem)
 {
-    int r = sem_ref(sem);
-    if(r) return r;
-    
-    _sem_t *s = (_sem_t *)*sem;
-    EnterCriticalSection (&s->value_lock);
-    if (s->value < SEM_VALUE_MAX) {
-        if (++s->value <= 0) {
-            if (!ReleaseSemaphore (s->s, 1, NULL)) {
-                s->value--;
-                r = EINVAL;
-            }
-        }
-    } else {
-        r = ERANGE;
-    }
-    LeaveCriticalSection (&s->value_lock);
+  _sem_t *sv;;
 
-    return sem_unref(sem,r);
+  if (!sem || (sv = *sem) == NULL)
+    return sem_result(EINVAL);
+  if (sem_result (pthread_mutex_lock(&sv->vlock)) != 0)
+    return -1;
+  if (*sem == NULL)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EINVAL);
+  }
+  if (((long long) sv->value + 1LL) > (long long) SEM_VALUE_MAX)
+  {
+      pthread_mutex_unlock (&sv->vlock);
+      return sem_result(ERANGE);
+  }
+  InterlockedIncrement((long*)&sv->value);
+  if (sv->value > 0)
+  {
+    pthread_mutex_unlock (&sv->vlock);
+    return 0;
+  }
+  if (ReleaseSemaphore(sv->s, 1, NULL))
+  {
+    pthread_mutex_unlock (&sv->vlock);
+    return 0;
+  }
+  InterlockedDecrement((long*)&sv->value);
+  pthread_mutex_unlock (&sv->vlock);
+  return sem_result(EINVAL);  
 }
 
 int sem_post_multiple(sem_t *sem, int count)
 {
-    int r = sem_ref(sem);
-    if(r) return r;
-    
-    _sem_t *s = (_sem_t *)*sem;
+  int waiters_count;
+  _sem_t *sv;;
 
-    EnterCriticalSection (&s->value_lock);
-    if (s->value > (SEM_VALUE_MAX-count)) {
-        r = ERANGE;
-    } else {
-        int waiters_count = -s->value;
-        s->value += count;
-        waiters_count = (waiters_count > count) ? count : waiters_count;
-        if (waiters_count > 0) {
-            if (!ReleaseSemaphore (s->s, waiters_count, NULL)) {
-                s->value -= count;
-                r = EINVAL;
-            }
-        }
-    }
-    LeaveCriticalSection (&s->value_lock);
-
-    return sem_unref(sem,r);
+  if (!sem || (sv = *sem) == NULL)
+    return sem_result(EINVAL);
+  if (sem_result (pthread_mutex_lock(&sv->vlock)) != 0)
+    return -1;
+  if (*sem == NULL)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EINVAL);
+  }
+  if (((long long)sv->value + (long long) count) > (long long) SEM_VALUE_MAX)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(ERANGE);
+  }
+  waiters_count = -sv->value;
+  InterlockedAdd((long*)&sv->value, (long) count);
+  if (waiters_count <= 0)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return 0;
+  }
+  if (!ReleaseSemaphore(sv->s, waiters_count < count ? waiters_count : count, NULL))
+  {
+    InterlockedAdd((long*)&sv->value, (long) -count);
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EINVAL);
+  }
+  pthread_mutex_unlock(&sv->vlock);
+  return 0;
 }
 
 sem_t *sem_open(const char *name, int oflag, mode_t mode, unsigned int value)
 {
-  errno = ENOSYS;
-  return SEM_FAILED;
+  sem_result(ENOSYS);
+  return NULL;
 }
 
 int sem_close(sem_t *sem)
 {
-  errno = ENOSYS;
-  return -1;
+  return sem_result(ENOSYS);
 }
 
 int sem_unlink(const char *name)
 {
-  errno = ENOSYS;
-  return -1;
+  return sem_result(ENOSYS);
 }
 
 int sem_getvalue(sem_t *sem, int *sval)
 {
-    int r = sem_ref(sem);
-    if(r) return r;
-    
-    _sem_t *s = (_sem_t *)*sem;
-    *sval = s->value;
-    return sem_unref(sem,r);
+  _sem_t *sv;;
+  if (!sem || (sv = *sem) == NULL || !sval)
+    return sem_result(EINVAL);
+  if (sem_result (pthread_mutex_lock(&sv->vlock)) != 0)
+    return -1;
+  if (*sem == NULL)
+  {
+    pthread_mutex_unlock(&sv->vlock);
+    return sem_result(EINVAL);
+  }
+  *sval = sv->value;
+  pthread_mutex_unlock(&sv->vlock);
+  return 0;  
 }

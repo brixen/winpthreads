@@ -443,6 +443,18 @@ void _pthread_invoke_cancel(void)
     pthread_exit(PTHREAD_CANCELED);
 }
 
+int  __pthread_shallcancel(void)
+{
+    pthread_t t;
+    if (!_pthread_cancelling)
+      return 0;
+    t = pthread_self();
+
+    if (t->cancelled && (t->p_state & PTHREAD_CANCEL_ENABLE))
+      return 1;
+    return 0;
+}
+
 void pthread_testcancel(void)
 {
     if (_pthread_cancelling)

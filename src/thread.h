@@ -33,5 +33,6 @@ int _pthread_tryjoin(pthread_t t, void **res);
 
 void thread_print_set(int state);
 void thread_print(volatile pthread_t t, char *txt);
+int  __pthread_shallcancel(void);
 
 #endif
