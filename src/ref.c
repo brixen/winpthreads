@@ -205,7 +205,7 @@ inline int rwl_ref_init(volatile pthread_rwlock_t *rwl )
 }
 
 
-inline int cond_unref(volatile pthread_cond_t *cond, int res)
+inline int cond_unref(pthread_cond_t *cond, int res)
 {
     _spin_lite_lock(&cond_global);
     cond_t *c_ = (cond_t *)*cond;
@@ -220,7 +220,7 @@ inline int cond_unref(volatile pthread_cond_t *cond, int res)
     return res;
 }
 
-inline int cond_ref(volatile pthread_cond_t *cond)
+inline int cond_ref(pthread_cond_t *cond)
 {
     int r = 0;
     INIT_COND(cond);
@@ -236,7 +236,7 @@ inline int cond_ref(volatile pthread_cond_t *cond)
     return r;
 }
 
-inline int cond_ref_wait(volatile pthread_cond_t *cond, pthread_mutex_t *m)
+inline int cond_ref_wait(pthread_cond_t *cond, pthread_mutex_t *m)
 {
     int r = 0;
     INIT_COND(cond);
@@ -260,7 +260,7 @@ inline int cond_ref_wait(volatile pthread_cond_t *cond, pthread_mutex_t *m)
     return r;
 }
 
-inline int cond_ref_destroy(volatile pthread_cond_t *cond, pthread_cond_t *cDestroy )
+inline int cond_ref_destroy(pthread_cond_t *cond, pthread_cond_t *cDestroy )
 {
     int r = 0;
 

@@ -8,6 +8,7 @@
 #include "ref.h"
 #include "cond.h"
 #include "mutex.h"
+#include "spinlock.h"
 
 #include "misc.h"
 
@@ -40,26 +41,22 @@ void cond_print(volatile pthread_cond_t *c, char *txt)
     }
 }
 
+static spin_t cond_locked = {0,LIFE_SPINLOCK,0};
 
-inline int cond_static_init(volatile pthread_cond_t *c)
+/*static*/ int cond_static_init(pthread_cond_t *c)
 {
-    pthread_cond_t c_tmp=NULL, *c_replaced;
-    int r = pthread_cond_init(&c_tmp, NULL);
-
-    if (!r) {
-        c_replaced = (pthread_cond_t *)InterlockedCompareExchangePointer(
-            (PVOID *)c, 
-            c_tmp,
-            PTHREAD_COND_INITIALIZER);
-        if (c_replaced != (pthread_cond_t *)PTHREAD_COND_INITIALIZER) {
-            printf("cond_static_init race detected: cond %p\n",  c_replaced);
-            /* someone crept in between: */
-            pthread_cond_destroy(&c_tmp);
-            /* it could even be destroyed: */
-            if (!c_replaced) r = EINVAL;
-        }
-    }
-    return r;
+  int r = 0;
+  
+  _spin_lite_lock(&cond_locked);
+  if (*c == NULL)
+    r = EINVAL;
+  else if (*c == PTHREAD_COND_INITIALIZER)
+    r = pthread_cond_init (c, NULL);
+  else
+    /* We assume someone was faster ... */
+    r = 0;
+  _spin_lite_unlock(&cond_locked);
+  return r;
 }
 
 int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
@@ -116,23 +113,47 @@ int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
 int pthread_cond_destroy(pthread_cond_t *c)
 {
     pthread_cond_t cDestroy;
-    int r = cond_ref_destroy(c,&cDestroy);
+    cond_t *_c;
+    int r;
+    if (!c || !*c)
+      return EINVAL;
+    if (*c == PTHREAD_COND_INITIALIZER)
+    {
+        _spin_lite_lock(&cond_locked);
+        if (*c == PTHREAD_COND_INITIALIZER)
+        {
+          *c = NULL;
+          r = 0;
+	}
+        else
+          r = EBUSY;
+        _spin_lite_unlock(&cond_locked);
+        return r;
+    }
+    r = cond_ref_destroy(c,&cDestroy);
     if(r) return r;
     if(!cDestroy) return 0; /* destroyed a (still) static initialized cond */
 
-    cond_t *_c = (cond_t *)cDestroy;
+    _c = (cond_t *)cDestroy;
+#if defined  USE_COND_ConditionVariable
     if (_c->waiters_count_ != 0)
     {
       *c = cDestroy;
       return EBUSY;
     }
-#if defined  USE_COND_ConditionVariable
     /* There is indeed no DeleteConditionVariable */
-
 #else /* USE_COND_SignalObjectAndWait USE_COND_Semaphore */
+    EnterCriticalSection (&_c->waiters_count_lock_);
+    if (_c->waiters_count_ != 0)
+    {
+      *c = cDestroy;
+      LeaveCriticalSection (&_c->waiters_count_lock_);
+      return EBUSY;
+    }
     CloseHandle(_c->waiters_done_);
-    DeleteCriticalSection(&_c->waiters_count_lock_);
     CloseHandle(_c->sema_);
+    LeaveCriticalSection (&_c->waiters_count_lock_);
+    DeleteCriticalSection(&_c->waiters_count_lock_);
 
 #endif /*USE_COND_ConditionVariable */
     _c->valid  = DEAD_COND;

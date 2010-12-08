@@ -63,9 +63,8 @@ struct cond_t
     pthread_mutex_t *bound; /*bound mutex */
 };
 
-inline int cond_static_init(volatile pthread_rwlock_t *r);
-
 void cond_print_set(int state, FILE *f);
+int cond_static_init(pthread_cond_t *c);
 
 void cond_print(volatile pthread_cond_t *c, char *txt);
 
