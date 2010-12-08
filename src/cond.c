@@ -421,25 +421,38 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 
 int pthread_condattr_destroy(pthread_condattr_t *a)
 {
-    (void) a;
-    return 0;
+  if (!a)
+    return EINVAL;
+   *a = 0;
+   return 0;
 }
 
 int pthread_condattr_init(pthread_condattr_t *a)
 {
-    *a = 0;
-    return 0;
+  if (!a)
+    return EINVAL;
+  *a = 0;
+  return 0;
 }
 
 int pthread_condattr_getpshared(pthread_condattr_t *a, int *s)
 {
-    *s = *a;
-    return 0;
+  if (!a || !s)
+    return EINVAL;
+  *s = *a;
+  return 0;
 }
 
 int pthread_condattr_setpshared(pthread_condattr_t *a, int s)
 {
-    *a = s;
-    return 0;
+  if (!a || (s != PTHREAD_PROCESS_SHARED && s != PTHREAD_PROCESS_PRIVATE))
+    return EINVAL;
+  if (s == PTHREAD_PROCESS_SHARED)
+  {
+     *a = PTHREAD_PROCESS_PRIVATE;
+     return ENOSYS;
+  }
+  *a = s;
+  return 0;
 }
 
