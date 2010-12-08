@@ -8,32 +8,27 @@ static int scnt = 0;
 static LONG bscnt = 0;
 static int scntMax = 0;
 
+static spin_t spin_locked = {0,LIFE_SPINLOCK,0};
+
+
 static inline int
-spinlock_static_init (volatile pthread_spinlock_t *s )
+spinlock_static_init (pthread_spinlock_t *l)
 {
-    pthread_spinlock_t s_tmp=NULL;
-    spin_t *si, *s_replaced;
-
-    if ( PTHREAD_SPINLOCK_INITIALIZER != (pthread_spinlock_t)(si = (spin_t *)*s))
-    {
-        /* Assume someone crept in between: */
-        return 0;
-    }
-
-    int r = pthread_spin_init(&s_tmp, 0);
-    if (!r) {
-        s_replaced = (spin_t *)InterlockedCompareExchangePointer(
-            (PVOID *)s, 
-            s_tmp,
-            si);
-        if (s_replaced != si) {
-            /* someone crept in between: */
-            pthread_spin_destroy(&s_tmp);
-            /* But it could also be destroyed already: */
-            if (!s_replaced) r = EINVAL;
-        }
-    }
-    return r;
+  int ret;
+  _spin_lite_lock(&spin_locked);
+  if (PTHREAD_SPINLOCK_INITIALIZER != *l)
+  {
+    /* Check that somebody called destroy already.  Otherwise assume someone crept in between.  */
+    ret = (*l == NULL ? EINVAL : 0);
+    /*fprintf(stderr, "Not equal ?! %d\n", ret); fflush(stderr);*/
+  }
+  else
+  {
+    ret = pthread_spin_init(l, PTHREAD_PROCESS_PRIVATE);
+    /*fprintf(stderr, "Equal but %d\n", ret); fflush(stderr);*/
+  }
+  _spin_lite_unlock(&spin_locked);
+  return ret;
 }
 
 int pthread_spin_init(pthread_spinlock_t *l, int pshared)
@@ -54,60 +49,76 @@ int pthread_spin_init(pthread_spinlock_t *l, int pshared)
 
 int pthread_spin_destroy(pthread_spinlock_t *l)
 {
-    CHECK_SPINLOCK(l);
-    spin_t *_l = (spin_t *)*l;
-
-    if (pthread_spin_trylock(l))
-      return EBUSY;
-    pthread_spinlock_t l2 = *l;
-    *l= NULL; /* dereference first, free later */
-    _l->valid  = DEAD_SPINLOCK;
-
-   _ReadWriteBarrier();
-    UNSET_OWNER_SL(_l);
-    _l->l = 0;
-
-    free(l2);
+  pthread_spinlock_t l2;
+  spin_t *_l;
+  if (!l || !*l) return EINVAL;
+  _l = (spin_t *)*l;
+  _spin_lite_lock(&spin_locked);
+  if (*l == PTHREAD_SPINLOCK_INITIALIZER)
+  {
+    *l = NULL;
+    _spin_lite_unlock(&spin_locked);
     return 0;
- }
+  }
+  _spin_lite_unlock(&spin_locked);
+  if (((spin_t *)(*l))->valid != (unsigned int)LIFE_SPINLOCK)
+    return EINVAL;
+  
+  if (pthread_spin_trylock(l))
+    return EBUSY;
+  l2 = *l;
+  *l= NULL; /* dereference first, free later */
+  _l->valid  = DEAD_SPINLOCK;
+
+  _ReadWriteBarrier();
+  _l->l = 0;
+
+  free(l2);
+  return 0;
+}
 
 /* No-fair spinlock due to lack of knowledge of thread number.  */
 int pthread_spin_lock(pthread_spinlock_t *l)
 {
-    INIT_SPINLOCK(l);
-    CHECK_SPINLOCK(l);
-    spin_t *_l = (spin_t *)*l;
-    CHECK_DEADLK_SL(_l);
+  spin_t *_l;
 
-    _vol_spinlock v;
-    v.l = (LONG *)&_l->l;
-    while (InterlockedExchange(v.lv, EBUSY))
-    {
-        /* Don't lock the bus whilst waiting */
-        while (*v.lv)
-        {
-            YieldProcessor();
+  if (!l || *l == NULL)
+    return EINVAL;
+  if (PTHREAD_SPINLOCK_INITIALIZER == *l)
+  {
+    int r = spinlock_static_init(l);
+    if (r != 0)
+      return r;
+  }
+  _ReadWriteBarrier();
 
-            /* Compiler barrier.  Prevent caching of *l */
-            _ReadWriteBarrier();
-        }
-    }
-
-    SET_OWNER_SL(_l);
-    return 0;
+  _l = (spin_t *)*l;
+  while (InterlockedExchange((long*)&_l->l, EBUSY))
+  {
+    YieldProcessor();
+    /* Compiler barrier.  Prevent caching of *l */
+    _ReadWriteBarrier();
+  }
+  return 0;
 }
 
 int pthread_spin_trylock(pthread_spinlock_t *l)
 {
-    int r = 0;
+  spin_t *_l;
+  int r = 0;
+  if (!l || *l == NULL)
+    return EINVAL;
+  if (PTHREAD_SPINLOCK_INITIALIZER == *l)
+  {
+    r = spinlock_static_init(l);
+    if (r != 0)
+      return r;
+  }
 
-    INIT_SPINLOCK(l);
-    CHECK_SPINLOCK(l);
-    spin_t *_l = (spin_t *)*l;
+  _l = (spin_t *)*l;
 
-    r = InterlockedExchange(&_l->l, EBUSY);
-    SET_OWNER_SLIF(_l, r);
-    return r;
+  r = InterlockedExchange(&_l->l, EBUSY);
+  return r;
 }
 
 int _spin_lite_getsc(int reset)
@@ -175,14 +186,20 @@ int _spin_lite_lock(spin_t *l)
 int
 pthread_spin_unlock (pthread_spinlock_t *l)
 {
-    CHECK_SPINLOCK(l);
-    spin_t *_l = (spin_t *)*l;
-    CHECK_PERM_SL(_l);
+  spin_t *_l;
+  int r;
+  if (!l || *l == NULL)
+    return EINVAL;
+  if (*l == PTHREAD_SPINLOCK_INITIALIZER)
+  {
+    fprintf (stderr, "*l == EPERM\n"); fflush(stderr);
+    return EPERM;
+  }
+ _ReadWriteBarrier();
+  _l = (spin_t *)*l;
 
-    /* Compiler barrier.  The store below acts with release symmantics.  */
-   _ReadWriteBarrier();
-    UNSET_OWNER_SL(_l);
-    _l->l = 0;
-
-    return 0;
+  /* Compiler barrier.  The store below acts with release symmantics.  */
+ _ReadWriteBarrier();
+  r = InterlockedExchange((long*)&_l->l, 0);
+  return (!r ? EPERM : 0);
 }

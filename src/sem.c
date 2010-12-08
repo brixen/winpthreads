@@ -77,10 +77,10 @@ int sem_destroy(sem_t *sem)
   return 0;
 }
 
-int sem_trywait(sem_t *sem)
+static int sem_std_enter(sem_t *sem,_sem_t **svp)
 {
   _sem_t *sv;
-
+  pthread_testcancel();
   if (!sem || (sv = *sem) == NULL)
     return sem_result(EINVAL);
   if (sem_result(pthread_mutex_lock(&sv->vlock)) != 0)
@@ -90,6 +90,15 @@ int sem_trywait(sem_t *sem)
      pthread_mutex_unlock(&sv->vlock);
      return sem_result(EINVAL);
   }
+  *svp = sv;
+  return 0;
+}
+
+int sem_trywait(sem_t *sem)
+{
+  _sem_t *sv;
+  if (sem_std_enter (sem, &sv) != 0)
+    return -1;
   if (sv->value <= 0)
   {
     pthread_mutex_unlock(&sv->vlock);
@@ -107,16 +116,8 @@ int sem_wait(sem_t *sem)
   int cur_v;
   _sem_t *sv;;
 
-  pthread_testcancel();
-  if (!sem || (sv = *sem) == NULL)
-    return sem_result(EINVAL);
-  if (sem_result (pthread_mutex_lock(&sv->vlock)) != 0)
+  if (sem_std_enter (sem, &sv) != 0)
     return -1;
-  if (*sem == NULL)
-  {
-    pthread_mutex_unlock(&sv->vlock);
-    return sem_result(EINVAL);
-  }
   InterlockedDecrement((long *)&sv->value);
   cur_v = sv->value;
   pthread_mutex_unlock(&sv->vlock);
@@ -166,16 +167,10 @@ int sem_timedwait(sem_t *sem, const struct timespec *t)
   if (!t)
     return sem_wait(sem);
   dwr = dwMilliSecs(_pthread_rel_time_in_ms(t));
-  pthread_testcancel();
-  if (!sem || (sv = *sem) == NULL)
-    return sem_result(EINVAL);
-  if (sem_result(pthread_mutex_lock(&sv->vlock)) != 0)
+
+  if (sem_std_enter (sem, &sv) != 0)
     return -1;
-  if (*sem == NULL)
-  {
-    pthread_mutex_unlock(&sv->vlock);
-    return sem_result(EINVAL);
-  }
+
   InterlockedDecrement((long*)&sv->value);
   cur_v = sv->value;
   pthread_mutex_unlock(&sv->vlock);
@@ -212,15 +207,9 @@ int sem_post(sem_t *sem)
 {
   _sem_t *sv;;
 
-  if (!sem || (sv = *sem) == NULL)
-    return sem_result(EINVAL);
-  if (sem_result (pthread_mutex_lock(&sv->vlock)) != 0)
+  if (sem_std_enter (sem, &sv) != 0)
     return -1;
-  if (*sem == NULL)
-  {
-    pthread_mutex_unlock(&sv->vlock);
-    return sem_result(EINVAL);
-  }
+
   if (((long long) sv->value + 1LL) > (long long) SEM_VALUE_MAX)
   {
       pthread_mutex_unlock (&sv->vlock);
@@ -247,15 +236,9 @@ int sem_post_multiple(sem_t *sem, int count)
   int waiters_count;
   _sem_t *sv;;
 
-  if (!sem || (sv = *sem) == NULL)
-    return sem_result(EINVAL);
-  if (sem_result (pthread_mutex_lock(&sv->vlock)) != 0)
+  if (sem_std_enter (sem, &sv) != 0)
     return -1;
-  if (*sem == NULL)
-  {
-    pthread_mutex_unlock(&sv->vlock);
-    return sem_result(EINVAL);
-  }
+
   if (((long long)sv->value + (long long) count) > (long long) SEM_VALUE_MAX)
   {
     pthread_mutex_unlock(&sv->vlock);
@@ -297,15 +280,9 @@ int sem_unlink(const char *name)
 int sem_getvalue(sem_t *sem, int *sval)
 {
   _sem_t *sv;;
-  if (!sem || (sv = *sem) == NULL || !sval)
-    return sem_result(EINVAL);
-  if (sem_result (pthread_mutex_lock(&sv->vlock)) != 0)
+  if (sem_std_enter (sem, &sv) != 0)
     return -1;
-  if (*sem == NULL)
-  {
-    pthread_mutex_unlock(&sv->vlock);
-    return sem_result(EINVAL);
-  }
+
   *sval = sv->value;
   pthread_mutex_unlock(&sv->vlock);
   return 0;  

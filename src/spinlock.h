@@ -7,22 +7,10 @@
         return EINVAL; }
 
 #undef USE_SPINLOCK_DEADLK
-#ifdef USE_SPINLOCK_DEADLK
-
-#define CHECK_DEADLK_SL(l)	if (l->owner == GetCurrentThreadId()) \
-                                return EDEADLK
-#define SET_OWNER_SL(l)		l->owner = GetCurrentThreadId()
-#define SET_OWNER_SLIF(l,r)	if(!(r))SET_OWNER_SL(l)
-#define UNSET_OWNER_SL(l)	l->owner = 0
-
-#else /* NOP's */
-
 #define CHECK_DEADLK_SL(l)
 #define SET_OWNER_SL(l)	
 #define SET_OWNER_SLIF(l,r)	
 #define UNSET_OWNER_SL(l)
-
-#endif
 
 #ifdef USE_SPINLOCK_DBG
 #define CHECK_SPINLOCK_LITE(l) if (!(l)) return EINVAL;
@@ -39,12 +27,7 @@
 #endif
 
 #undef USE_SPINLOCK_EPERM
-#ifdef USE_SPINLOCK_EPERM
-#define CHECK_PERM_SL(l)	if (l->owner != GetCurrentThreadId()) \
-                                return EPERM
-#else /* NOP's */
 #define CHECK_PERM_SL(l)
-#endif
 
 #define INIT_SPINLOCK(s)  { int r; \
     if (PTHREAD_SPINLOCK_INITIALIZER == *s) { if ((r = spinlock_static_init(s))) return r; }}
