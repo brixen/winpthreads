@@ -182,6 +182,8 @@ int sem_timedwait(sem_t *sem, const struct timespec *t)
   {
   case WAIT_TIMEOUT:
       cur_v = ETIMEDOUT;
+      if (__pthread_shallcancel ())
+        cur_v = EINVAL;
       break;
   case WAIT_ABANDONED:
       cur_v = EINTR;
@@ -200,6 +202,7 @@ int sem_timedwait(sem_t *sem, const struct timespec *t)
       cur_v = 0;
     pthread_mutex_unlock(&sv->vlock);
   }
+  pthread_testcancel();
   return sem_result(cur_v);
 }
 
