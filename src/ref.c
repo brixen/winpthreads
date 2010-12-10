@@ -213,9 +213,7 @@ inline int cond_unref(pthread_cond_t *cond, int res)
 #ifdef WINPTHREAD_DBG
     assert((c_->valid == LIFE_COND) && (c_->busy > 0));
 #endif
-     if (!(--c_->busy)) {
-        c_->bound = NULL;
-    }
+     --c_->busy;
     _spin_lite_unlock(&cond_global);
     return res;
 }
@@ -223,35 +221,23 @@ inline int cond_unref(pthread_cond_t *cond, int res)
 inline int cond_ref(pthread_cond_t *cond)
 {
     int r = 0;
-    INIT_COND(cond);
     _spin_lite_lock(&cond_global);
-
     if (!cond || !*cond || ((cond_t *)*cond)->valid != LIFE_COND) r = EINVAL;
-    else {
-        ((cond_t *)*cond)->busy ++;
-    }
-
+    else ((cond_t *)*cond)->busy ++;
     _spin_lite_unlock(&cond_global);
 
     return r;
 }
 
-inline int cond_ref_wait(pthread_cond_t *cond, pthread_mutex_t *m)
+inline int cond_ref_wait(pthread_cond_t *cond)
 {
     int r = 0;
-    INIT_COND(cond);
-    _spin_lite_lock(&cond_global);
 
+    _spin_lite_lock(&cond_global);
     if (!cond || !*cond || ((cond_t *)*cond)->valid != LIFE_COND) r = EINVAL;
     else {
         cond_t *c_ = (cond_t *)*cond;
-        /* Different mutexes were supplied for concurrent pthread_cond_wait() or pthread_cond_timedwait() operations on the same condition variable: */
-        if (c_->bound && c_->bound != m) {
-            r = EINVAL;
-        } else {
-            c_->bound = m;
-            c_->busy ++;
-        }
+	c_->busy ++;
     }
 
     _spin_lite_unlock(&cond_global);

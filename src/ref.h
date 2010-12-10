@@ -21,7 +21,7 @@ inline int rwl_ref_init(volatile pthread_rwlock_t *rwl );
 
 inline int cond_unref(pthread_cond_t *cond, int res);
 inline int cond_ref(pthread_cond_t *cond);
-inline int cond_ref_wait(pthread_cond_t *cond, pthread_mutex_t *m);
+inline int cond_ref_wait(pthread_cond_t *cond);
 inline int cond_ref_destroy(pthread_cond_t *cond, pthread_cond_t *cDestroy );
 inline int cond_ref_init(pthread_cond_t *cond );
 /* to be used in barriers */
