@@ -35,7 +35,7 @@ inline int mutex_static_init(volatile pthread_mutex_t *m )
     pthread_mutex_t m_tmp=NULL;
     mutex_t *mi, *m_replaced;
 
-    if ( !STATIC_INITIALIZER(mi = (mutex_t *)*m) ) {
+    if (!STATIC_INITIALIZER(mi = (mutex_t *)*m) ) {
         /* Assume someone crept in between: */
         return 0;
     }
