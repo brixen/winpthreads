@@ -379,9 +379,7 @@ int pthread_cond_wait (pthread_cond_t *c, pthread_mutex_t *external_mutex)
 
     r = pthread_mutex_unlock(external_mutex);
     if (!r)
-    {
       r = do_sema_b_wait (_c->sema_q, 0, INFINITE,&_c->waiters_q_lock_,&_c->value_q);
-    }
     
     EnterCriticalSection (&_c->waiters_count_lock_);
     n = _c->waiters_count_unblock_;
@@ -405,12 +403,14 @@ int pthread_cond_wait (pthread_cond_t *c, pthread_mutex_t *external_mutex)
       }
       _c->waiters_count_gone_ = 0;
     }
+    else
+      _c->waiters_count_gone_ += 1;
     LeaveCriticalSection (&_c->waiters_count_lock_);
      
     if (n == 1)
     {
       r2 = do_sema_b_release (_c->sema_b, 1,&_c->waiters_b_lock_,&_c->value_b);
-      if (!r) r = r2;
+      if (r2 != 0) return cond_unref(c,r2);
     }
     r2 = pthread_mutex_lock(external_mutex);
     if (r2 != 0)
@@ -463,9 +463,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
 
     r = pthread_mutex_unlock(external_mutex);
     if (!r)
-    {
       r = do_sema_b_wait (_c->sema_q, 0, dwr,&_c->waiters_q_lock_,&_c->value_q);
-    }
     
     EnterCriticalSection (&_c->waiters_count_lock_);
     n = _c->waiters_count_unblock_;
@@ -489,12 +487,14 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
       }
       _c->waiters_count_gone_ = 0;
     }
+    else
+      _c->waiters_count_gone_ += 1;
     LeaveCriticalSection (&_c->waiters_count_lock_);
      
     if (n == 1)
     {
       r2 = do_sema_b_release (_c->sema_b, 1,&_c->waiters_b_lock_,&_c->value_b);
-      if (!r) r = r2;
+      if (r2 != 0) return cond_unref(c,r2);
     }
     r2 = pthread_mutex_lock(external_mutex);
     if (r2 != 0)
