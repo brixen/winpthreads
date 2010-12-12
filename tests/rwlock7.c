@@ -67,19 +67,19 @@ void *thread_routine (void *arg)
        */
       if ((iteration % interval) == 0)
         {
-          assert(pthread_rwlock_wrlock (&data[element].lock) == 0);
+          pthread_rwlock_wrlock (&data[element].lock);
           data[element].data = self->thread_num;
           data[element].updates++;
           self->updates++;
 	  interval = 1 + rand_r (&seed) % 71;
-          assert(pthread_rwlock_unlock (&data[element].lock) == 0);
+          pthread_rwlock_unlock (&data[element].lock);
         } else {
           /*
            * Look at the current data element to see whether
            * the current thread last updated it. Count the
            * times, to report later.
            */
-          assert(pthread_rwlock_rdlock (&data[element].lock) == 0);
+          pthread_rwlock_rdlock (&data[element].lock);
 
           self->reads++;
 
@@ -89,7 +89,7 @@ void *thread_routine (void *arg)
 	      interval = 1 + self->changed % 71;
             }
 
-          assert(pthread_rwlock_unlock (&data[element].lock) == 0);
+          pthread_rwlock_unlock (&data[element].lock);
         }
 
       element = (element + 1) % DATASIZE;
