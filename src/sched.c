@@ -114,11 +114,11 @@ int pthread_setschedparam(pthread_t t, int pol,  const struct sched_param *p)
     THREAD_PRIORITY_TIME_CRITICAL   15
     */
     if (pr <= THREAD_PRIORITY_IDLE) {
-        pr = THREAD_PRIORITY_LOWEST; //THREAD_PRIORITY_IDLE;
+        pr = THREAD_PRIORITY_IDLE;
     } else if (pr <= THREAD_PRIORITY_LOWEST) {
         pr = THREAD_PRIORITY_LOWEST;
     } else if (pr >= THREAD_PRIORITY_TIME_CRITICAL) {
-        pr = THREAD_PRIORITY_HIGHEST; // THREAD_PRIORITY_TIME_CRITICAL;
+        pr = THREAD_PRIORITY_TIME_CRITICAL;
     } else if (pr >= THREAD_PRIORITY_HIGHEST) {
         pr = THREAD_PRIORITY_HIGHEST;
     }

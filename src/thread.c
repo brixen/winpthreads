@@ -4,6 +4,7 @@
 #include "pthread.h"
 #include "thread.h"
 #include "misc.h"
+#include "spinlock.h"
 
 static volatile long _pthread_cancelling;
 static int _pthread_concur;
@@ -661,6 +662,14 @@ int pthread_create_wrapper(void *args)
     tv->tid = GetCurrentThreadId();
     pthread_setschedparam(tv, SCHED_OTHER, &tv->sched);
 
+    /* If we exit too early, then we can race with create */
+    do
+    {
+        YieldProcessor();
+        _ReadWriteBarrier();
+    }
+    while (tv->h == INVALID_HANDLE_VALUE);
+
     if (!setjmp(tv->jb))
     {
         /* Call function and save return value */
@@ -668,13 +677,6 @@ int pthread_create_wrapper(void *args)
 
         /* Clean up destructors */
         _pthread_cleanup_dest(tv);
-    }
-
-    /* If we exit too early, then we can race with create */
-    while (tv->h == (HANDLE) -1)
-    {
-        YieldProcessor();
-        _ReadWriteBarrier();
     }
 
     rslt = (unsigned) (size_t) tv->ret_arg;
@@ -694,6 +696,8 @@ int pthread_create_wrapper(void *args)
 
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
 {
+    HANDLE thrd = NULL;
+    int r = 0;
     struct _pthread_v *tv;
     size_t ssize = 0;
 
@@ -709,7 +713,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     tv->ret_arg = arg;
     tv->func = func;
     tv->p_state = PTHREAD_DEFAULT_ATTR;
-    tv->h = (HANDLE) -1;
+    tv->h = INVALID_HANDLE_VALUE;
     tv->valid = LIFE_THREAD;
     tv->sched.sched_priority = THREAD_PRIORITY_NORMAL;
     tv->sched_pol = SCHED_OTHER;
@@ -727,23 +731,41 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
 	}
     }
 
-    /* Make sure tv->h has value of -1 */
+    /* Make sure tv->h has value of INVALID_HANDLE_VALUE */
     _ReadWriteBarrier();
 
-    tv->h = (HANDLE) _beginthreadex(NULL, ssize, (unsigned int (__stdcall *)(void *))pthread_create_wrapper, tv, 0, NULL);
-
+    thrd = (HANDLE) _beginthreadex(NULL, ssize, (unsigned int (__stdcall *)(void *))pthread_create_wrapper, tv, 0, NULL);
+    if (thrd == INVALID_HANDLE_VALUE)
+      thrd = 0;
     /* Failed */
-    if (!tv->h) return 1;
-
-
-    if (tv->p_state & PTHREAD_CREATE_DETACHED)
+    if (thrd)
     {
-        CloseHandle(tv->h);
+      int pr = tv->sched.sched_priority;
+      if (pr <= THREAD_PRIORITY_IDLE) {
+	  pr = THREAD_PRIORITY_IDLE;
+      } else if (pr <= THREAD_PRIORITY_LOWEST) {
+	  pr = THREAD_PRIORITY_LOWEST;
+      } else if (pr >= THREAD_PRIORITY_TIME_CRITICAL) {
+	  pr = THREAD_PRIORITY_TIME_CRITICAL;
+      } else if (pr >= THREAD_PRIORITY_HIGHEST) {
+	  pr = THREAD_PRIORITY_HIGHEST;
+      }
+      SetThreadPriority(thrd, pr);
+    }
+    if (!thrd) r = EAGAIN;
+    else if (tv->p_state & PTHREAD_CREATE_DETACHED)
+    {
+        CloseHandle(thrd);
         _ReadWriteBarrier();
         tv->h = 0;
+    } else
+      tv->h = thrd;
+    if (r != 0)
+    {
+      *th = NULL;
+      free(tv);
     }
-
-    return 0;
+    return r;
 }
 
 int pthread_join(pthread_t t, void **res)
