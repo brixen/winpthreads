@@ -366,40 +366,47 @@ pthread_t pthread_self(void)
         t->p_state = PTHREAD_DEFAULT_ATTR /*| PTHREAD_CREATE_DETACHED*/;
         t->tid = GetCurrentThreadId();
         t->sched_pol = SCHED_OTHER;
-        t->sched.sched_priority = THREAD_PRIORITY_NORMAL;
+        t->h = GetCurrentThread();
+        t->sched.sched_priority = GetThreadPriority(t->h);
         t->ended = 0;
-	t->h = GetCurrentThread();
 
         /* Save for later */
         if (!TlsSetValue(_pthread_tls, t)) abort();
 
         if (setjmp(t->jb))
         {
-            unsigned rslt = 128;
-            /* Make sure we free ourselves if we are detached */
-            t = (pthread_t)TlsGetValue(_pthread_tls);
-            if (t && !t->h) {
-                t->valid = DEAD_THREAD;
-                rslt = (unsigned) (size_t) t->ret_arg;
-                free(t);
-                t = NULL;
-                TlsSetValue(_pthread_tls, t);
-            } else if (t)
-            {
-              rslt = (unsigned) (size_t) t->ret_arg;
-              t->ended = 1;
-              if ((t->p_state & PTHREAD_CREATE_DETACHED) == PTHREAD_CREATE_DETACHED)
-              {
-                t->valid = DEAD_THREAD;
-                CloseHandle (t->h);
-                free (t);
-                t = NULL;
-                TlsSetValue(_pthread_tls, t);
-              }
-            }
-
-            /* Time to die */
-            _endthreadex(rslt);
+	  unsigned rslt = 128;
+	  /* Make sure we free ourselves if we are detached */
+	  t = (pthread_t)TlsGetValue(_pthread_tls);
+	  if (t)
+	  {
+	    while (t->h == INVALID_HANDLE_VALUE)
+	    {
+	      Sleep(0);
+	      _ReadWriteBarrier();
+	    }
+	    if (!t->h) {
+		t->valid = DEAD_THREAD;
+		rslt = (unsigned) (size_t) t->ret_arg;
+		free(t);
+		t = NULL;
+		TlsSetValue(_pthread_tls, t);
+	    } else
+	    {
+	      rslt = (unsigned) (size_t) t->ret_arg;
+	      t->ended = 1;
+	      if ((t->p_state & PTHREAD_CREATE_DETACHED) == PTHREAD_CREATE_DETACHED)
+	      {
+		t->valid = DEAD_THREAD;
+		CloseHandle (t->h);
+		free (t);
+		t = NULL;
+		TlsSetValue(_pthread_tls, t);
+	      }
+	    }
+	  }
+	  /* Time to die */
+	  _endthreadex(rslt);
         }
     }
 
@@ -482,7 +489,16 @@ int pthread_cancel(pthread_t t)
 {
     struct _pthread_v *tv = (struct _pthread_v *) t;
 
+
     CHECK_OBJECT(t, ESRCH);
+    if (tv && tv->h == INVALID_HANDLE_VALUE)
+    {
+      while (tv->h == INVALID_HANDLE_VALUE)
+      {
+	  YieldProcessor();
+	  _ReadWriteBarrier();
+      }
+    }
     /*if (tv->ended) return ESRCH;
     if (pthread_equal(pthread_self(), t))
     {
@@ -660,15 +676,14 @@ int pthread_create_wrapper(void *args)
 
     TlsSetValue(_pthread_tls, tv);
     tv->tid = GetCurrentThreadId();
-    pthread_setschedparam(tv, SCHED_OTHER, &tv->sched);
-
     /* If we exit too early, then we can race with create */
-    do
+    while (tv->h == INVALID_HANDLE_VALUE)
     {
         YieldProcessor();
         _ReadWriteBarrier();
     }
-    while (tv->h == INVALID_HANDLE_VALUE);
+
+    pthread_setschedparam(tv, SCHED_OTHER, &tv->sched);
 
     if (!setjmp(tv->jb))
     {
@@ -772,8 +787,15 @@ int pthread_join(pthread_t t, void **res)
 {
     DWORD dwFlags;
     struct _pthread_v *tv = (struct _pthread_v *) t;
-
-    if (!tv || tv->h == NULL || tv->h == INVALID_HANDLE_VALUE || !GetHandleInformation(tv->h, &dwFlags))
+    if (tv && tv->h == INVALID_HANDLE_VALUE)
+    {
+      while (tv->h == INVALID_HANDLE_VALUE)
+      {
+	  YieldProcessor();
+	  _ReadWriteBarrier();
+      }
+    }
+    if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
     {
       return ESRCH;
     }
@@ -803,7 +825,15 @@ int _pthread_tryjoin(pthread_t t, void **res)
     DWORD dwFlags;
     struct _pthread_v *tv = t;
  
-    if (!tv || tv->h == NULL || tv->h == INVALID_HANDLE_VALUE || !GetHandleInformation(tv->h, &dwFlags))
+    if (tv && tv->h == INVALID_HANDLE_VALUE)
+    {
+      while (tv->h == INVALID_HANDLE_VALUE)
+      {
+	  YieldProcessor();
+	  _ReadWriteBarrier();
+      }
+    }
+    if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
       return ESRCH;
 
     if ((tv->p_state & PTHREAD_CREATE_DETACHED) != 0)
@@ -839,10 +869,16 @@ int pthread_detach(pthread_t t)
     * our call would be undefined if called on a dead thread.
     */
 
-    if (!tv || tv->h == INVALID_HANDLE_VALUE || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
+    if (tv && tv->h == INVALID_HANDLE_VALUE)
     {
-      return ESRCH;
+      while (tv->h == INVALID_HANDLE_VALUE)
+      {
+	  YieldProcessor();
+	  _ReadWriteBarrier();
+      }
     }
+    if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
+      return ESRCH;
     if ((tv->p_state & PTHREAD_CREATE_DETACHED) != 0)
     {
       return EINVAL;

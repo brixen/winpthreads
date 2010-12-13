@@ -16,12 +16,19 @@ int pthread_barrier_destroy(pthread_barrier_t *b_)
     
     pthread_mutex_lock(&b->m);
 
-    if ((r = pthread_cond_destroy(&b->c)) != 0)
+    if (sem_destroy(&b->sems[0]) != 0)
     {
         /* Could this happen? */
         *b_ = bDestroy;
         pthread_mutex_unlock (&b->m);
         return EBUSY;
+    }
+    if (sem_destroy(&b->sems[1]) != 0)
+    {
+      sem_init (&b->sems[0], b->share, 0);
+      *b_ = bDestroy;
+      pthread_mutex_unlock (&b->m);
+      return EBUSY;
     }
     b->valid = DEAD_BARRIER;
     pthread_mutex_unlock(&b->m);
@@ -45,9 +52,10 @@ pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
       b->share = PTHREAD_PROCESS_PRIVATE;
     else
       memcpy (&b->share, *((void **) attr), sizeof (int));
-    b->total = 0;
+    b->total = count;
     b->count = count;
     b->valid = LIFE_BARRIER;
+    b->sel = 0;
 
     if (pthread_mutex_init(&b->m, NULL) != 0)
     {
@@ -55,9 +63,16 @@ pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
       return ENOMEM;
     }
 
-    if (pthread_cond_init(&b->c, NULL) != 0)
+    if (sem_init(&b->sems[0], b->share, 0) != 0)
     {
        pthread_mutex_destroy(&b->m);
+       free (b);
+       return ENOMEM;
+    }
+    if (sem_init(&b->sems[1], b->share, 0) != 0)
+    {
+       pthread_mutex_destroy(&b->m);
+       sem_destroy(&b->sems[0]);
        free (b);
        return ENOMEM;
     }
@@ -69,61 +84,31 @@ pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
 
 int pthread_barrier_wait(pthread_barrier_t *b_)
 {
-    int r = barrier_ref(b_);
-    if(r) return r;
-    
-    barrier_t *b = (barrier_t *)*b_;
+  long sel;
+  int r;
 
-    if ((r = pthread_mutex_lock(&b->m))) return  barrier_unref(b_,EINVAL);
+  r = barrier_ref(b_);
+  if(r) return r;
 
-    while (b->total > _PTHREAD_BARRIER_FLAG) {
-        /* Wait until everyone exits the barrier */
-        r = pthread_cond_wait(&b->c, &b->m);
-        if (r) {
-            pthread_mutex_unlock(&b->m);
-            return barrier_unref(b_,EINVAL);
-        }
-    }
+  barrier_t *b = (barrier_t *)*b_;
 
-    /* Are we the first to enter? */
-    if (b->total == _PTHREAD_BARRIER_FLAG) b->total = 0;
-    InterlockedIncrement ((long *) &b->total);
-    if (b->total == b->count)
-    {
-        InterlockedAdd ((long *)&b->total, _PTHREAD_BARRIER_FLAG - 1);
-        r = pthread_cond_broadcast(&b->c);
-        pthread_mutex_unlock(&b->m);
-        if (r && r != EBUSY) {
-            return barrier_unref(b_,EINVAL);
-        }
-
-        return barrier_unref(b_,PTHREAD_BARRIER_SERIAL_THREAD);
-    }
-    else
-    {
-        while (b->total < _PTHREAD_BARRIER_FLAG)
-        {
-            /* Wait until enough threads enter the barrier */
-            r = pthread_cond_wait(&b->c, &b->m);
-            if (r && r != EBUSY)
-            {
-                pthread_mutex_unlock(&b->m);
-                return barrier_unref(b_,EINVAL);
-            }
-        }
-        InterlockedDecrement ((long *) &b->total);
-
-        if (b->total == _PTHREAD_BARRIER_FLAG)
-        {
-            /* Get entering threads to wake up */
-            r = pthread_cond_broadcast(&b->c);
-        }
-
-        if (pthread_mutex_unlock(&b->m) || r) {
-            return barrier_unref(b_,EINVAL);
-        }
-   }
-   return barrier_unref(b_,0);
+  if ((r = pthread_mutex_lock(&b->m))) return  barrier_unref(b_,EINVAL);
+  sel = b->sel;
+  InterlockedDecrement((long*)&b->total);
+  if (b->total == 0)
+  {
+    b->total = b->count;
+    pthread_mutex_unlock(&b->m);
+    if (b->count > 1)
+      r = sem_post_multiple (&b->sems[sel], b->count - 1);
+    if (!r)
+      r = InterlockedCompareExchange((long*)&b->sel, !sel, sel) == sel ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
+    return barrier_unref(b_,r);
+  }
+  pthread_mutex_unlock(&b->m);
+  if ((r = sem_wait(&b->sems[sel])) == 0)
+    r = InterlockedCompareExchange((long*)&b->sel, !sel, sel) == sel ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
+  return barrier_unref(b_,r);
 }
 
 int pthread_barrierattr_init(void **attr)
