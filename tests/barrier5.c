@@ -84,8 +84,7 @@ main()
   int serialThreadsTotal;
   LONG Crossings;
   pthread_t t[NUMTHREADS + 1];
-  printf ("Dead locks\n");
-  return 1;
+
   for (j = 1; j <= NUMTHREADS; j++)
     {
       int height = j<HEIGHT?j:HEIGHT;
