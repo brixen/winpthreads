@@ -15,6 +15,7 @@ struct _pthread_v
     void *ret_arg;
     void *(* func)(void *);
     _pthread_cleanup *clean;
+    int nobreak;
     HANDLE h;
     int cancelled;
     unsigned int p_state;
@@ -30,7 +31,7 @@ struct _pthread_v
 };
 
 int _pthread_tryjoin(pthread_t t, void **res);
-
+void _pthread_setnobreak(int);
 void thread_print_set(int state);
 void thread_print(volatile pthread_t t, char *txt);
 int  __pthread_shallcancel(void);

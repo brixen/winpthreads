@@ -49,10 +49,8 @@ int pthread_spin_init(pthread_spinlock_t *l, int pshared)
 
 int pthread_spin_destroy(pthread_spinlock_t *l)
 {
-  pthread_spinlock_t l2;
   spin_t *_l;
   if (!l || !*l) return EINVAL;
-  _l = (spin_t *)*l;
   _spin_lite_lock(&spin_locked);
   if (*l == PTHREAD_SPINLOCK_INITIALIZER)
   {
@@ -61,19 +59,16 @@ int pthread_spin_destroy(pthread_spinlock_t *l)
     return 0;
   }
   _spin_lite_unlock(&spin_locked);
+  _l = (spin_t *)*l;
   if (((spin_t *)(*l))->valid != (unsigned int)LIFE_SPINLOCK)
     return EINVAL;
   
-  if (pthread_spin_trylock(l))
+  if (_l->l != 0)
     return EBUSY;
-  l2 = *l;
   *l= NULL; /* dereference first, free later */
   _l->valid  = DEAD_SPINLOCK;
-
-  _ReadWriteBarrier();
   _l->l = 0;
-
-  free(l2);
+  free(_l);
   return 0;
 }
 
@@ -90,14 +85,10 @@ int pthread_spin_lock(pthread_spinlock_t *l)
     if (r != 0)
       return r;
   }
-  _ReadWriteBarrier();
-
   _l = (spin_t *)*l;
-  while (InterlockedExchange((long*)&_l->l, EBUSY))
+  while (InterlockedExchange((long*)&_l->l, EBUSY) == EBUSY)
   {
     YieldProcessor();
-    /* Compiler barrier.  Prevent caching of *l */
-    _ReadWriteBarrier();
   }
   return 0;
 }
@@ -191,15 +182,10 @@ pthread_spin_unlock (pthread_spinlock_t *l)
   if (!l || *l == NULL)
     return EINVAL;
   if (*l == PTHREAD_SPINLOCK_INITIALIZER)
-  {
-    fprintf (stderr, "*l == EPERM\n"); fflush(stderr);
     return EPERM;
-  }
- _ReadWriteBarrier();
   _l = (spin_t *)*l;
 
   /* Compiler barrier.  The store below acts with release symmantics.  */
- _ReadWriteBarrier();
   r = InterlockedExchange((long*)&_l->l, 0);
   return (!r ? EPERM : 0);
 }

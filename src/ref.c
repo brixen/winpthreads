@@ -145,7 +145,6 @@ inline int rwl_ref(volatile pthread_rwlock_t *rwl, int f )
     }
 
     _spin_lite_unlock(&rwl_global);
-    if (!r) r=rwl_check_owner((pthread_rwlock_t *)rwl,f);
 
     return r;
 }
@@ -163,8 +162,6 @@ inline int rwl_ref_unlock(volatile pthread_rwlock_t *rwl )
     }
 
     _spin_lite_unlock(&rwl_global);
-    if (!r) r=rwl_unset_owner((pthread_rwlock_t *)rwl,0);
- 
 
     return r;
 }
@@ -181,7 +178,7 @@ inline int rwl_ref_destroy(volatile pthread_rwlock_t *rwl, pthread_rwlock_t *rDe
         rwlock_t *r_ = (rwlock_t *)*rwl;
         if (STATIC_RWL_INITIALIZER(*rwl)) *rwl = NULL;
         else if (r_->valid != LIFE_RWLOCK) r = EINVAL;
-        else if (r_->busy || COND_RWL_LOCKED(r_)) r = EBUSY;
+        else if (r_->busy) r = EBUSY;
         else {
             *rDestroy = *rwl;
             *rwl = NULL;

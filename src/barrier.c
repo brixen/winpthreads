@@ -87,28 +87,33 @@ int pthread_barrier_wait(pthread_barrier_t *b_)
 
     /* Are we the first to enter? */
     if (b->total == _PTHREAD_BARRIER_FLAG) b->total = 0;
-
-    if (InterlockedIncrement ((long *) &b->total) == b->count)
+    InterlockedIncrement ((long *) &b->total);
+    if (b->total == b->count)
     {
         InterlockedAdd ((long *)&b->total, _PTHREAD_BARRIER_FLAG - 1);
         r = pthread_cond_broadcast(&b->c);
         pthread_mutex_unlock(&b->m);
-        if (r) {
+        if (r && r != EBUSY) {
             return barrier_unref(b_,EINVAL);
         }
 
         return barrier_unref(b_,PTHREAD_BARRIER_SERIAL_THREAD);
-    } else {
-        while (b->total < _PTHREAD_BARRIER_FLAG) {
+    }
+    else
+    {
+        while (b->total < _PTHREAD_BARRIER_FLAG)
+        {
             /* Wait until enough threads enter the barrier */
             r = pthread_cond_wait(&b->c, &b->m);
-            if (r) {
+            if (r && r != EBUSY)
+            {
                 pthread_mutex_unlock(&b->m);
                 return barrier_unref(b_,EINVAL);
             }
         }
+        InterlockedDecrement ((long *) &b->total);
 
-        if (InterlockedDecrement ((long *) &b->total) == _PTHREAD_BARRIER_FLAG)
+        if (b->total == _PTHREAD_BARRIER_FLAG)
         {
             /* Get entering threads to wake up */
             r = pthread_cond_broadcast(&b->c);

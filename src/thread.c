@@ -431,7 +431,7 @@ int pthread_exit(void *res)
 void _pthread_invoke_cancel(void)
 {
     _pthread_cleanup *pcup;
-
+    _pthread_setnobreak (1);
     InterlockedDecrement(&_pthread_cancelling);
 
     /* Call cancel queue */
@@ -440,6 +440,7 @@ void _pthread_invoke_cancel(void)
         pcup->func((pthread_once_t *)pcup->arg);
     }
 
+    _pthread_setnobreak (0);
     pthread_exit(PTHREAD_CANCELED);
 }
 
@@ -450,9 +451,16 @@ int  __pthread_shallcancel(void)
       return 0;
     t = pthread_self();
 
-    if (t->cancelled && (t->p_state & PTHREAD_CANCEL_ENABLE))
+    if (t->nobreak <= 0 && t->cancelled && (t->p_state & PTHREAD_CANCEL_ENABLE))
       return 1;
     return 0;
+}
+
+void _pthread_setnobreak(int v)
+{
+  pthread_t t = pthread_self();
+  if (v > 0) InterlockedIncrement ((long*)&t->nobreak);
+  else InterlockedDecrement((long*)&t->nobreak);
 }
 
 void pthread_testcancel(void)
@@ -461,7 +469,7 @@ void pthread_testcancel(void)
     {
         pthread_t t = pthread_self();
 
-        if (t->cancelled && (t->p_state & PTHREAD_CANCEL_ENABLE))
+        if (t->cancelled && (t->p_state & PTHREAD_CANCEL_ENABLE) && t->nobreak <= 0)
         {
             _pthread_invoke_cancel();
         }

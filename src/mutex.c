@@ -32,15 +32,27 @@ void mutex_print(volatile pthread_mutex_t *m, char *txt)
 
 inline int mutex_static_init(volatile pthread_mutex_t *m )
 {
+    static pthread_mutexattr_t mxattr_recursive = PTHREAD_MUTEX_RECURSIVE;
+    static pthread_mutexattr_t mxattr_errorcheck = PTHREAD_MUTEX_ERRORCHECK;
     pthread_mutex_t m_tmp=NULL;
     mutex_t *mi, *m_replaced;
+    int r;
 
     if (!STATIC_INITIALIZER(mi = (mutex_t *)*m) ) {
         /* Assume someone crept in between: */
         return 0;
     }
 
-    int r = pthread_mutex_init(&m_tmp, NULL);
+    if (*m == PTHREAD_MUTEX_INITIALIZER)
+      r = pthread_mutex_init (&m_tmp, NULL);
+    else if (*m == PTHREAD_RECURSIVE_MUTEX_INITIALIZER)
+      r = pthread_mutex_init (&m_tmp, &mxattr_recursive);
+    else if (*m == PTHREAD_ERRORCHECK_MUTEX_INITIALIZER)
+      r = pthread_mutex_init (&m_tmp, &mxattr_errorcheck);
+    else if (*m == NULL)
+      r = EINVAL;
+    else
+      r = pthread_mutex_init(&m_tmp, NULL);
     if (!r) {
         ((mutex_t *)m_tmp)->type = MUTEX_INITIALIZER2TYPE(mi);
         m_replaced = (mutex_t *)InterlockedCompareExchangePointer(
@@ -53,7 +65,7 @@ inline int mutex_static_init(volatile pthread_mutex_t *m )
             /* But it could also be destroyed already: */
             if (!m_replaced) r = EINVAL;
         }
-    }
+    } else if (r == EBUSY && *m == NULL) r = 0;
     return r;
 }
 
