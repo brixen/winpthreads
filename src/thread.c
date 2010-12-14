@@ -11,11 +11,31 @@ static int _pthread_concur;
 
 /* FIXME Will default to zero as needed */
 static pthread_once_t _pthread_tls_once;
-static DWORD _pthread_tls;
+static DWORD _pthread_tls = 0xffffffff;
 
 static pthread_rwlock_t _pthread_key_lock = PTHREAD_RWLOCK_INITIALIZER;
 static unsigned long _pthread_key_max=0L;
 static unsigned long _pthread_key_sch=0L;
+
+static BOOL WINAPI
+__dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
+{
+  pthread_t t = NULL;
+  if (dwReason == DLL_THREAD_DETACH)
+  {
+    if (_pthread_tls != 0xffffffff)
+      t = (pthread_t)TlsGetValue(_pthread_tls);
+    if (t && t->thread_noposix != 0)
+    {
+      free (t);
+      t = NULL;
+      TlsSetValue(_pthread_tls, t);
+    }
+  }
+  return TRUE;
+}
+
+PIMAGE_TLS_CALLBACK __xl_f __attribute__ ((section (".CRT$XLF"))) = (PIMAGE_TLS_CALLBACK) __dyn_tls_pthread;
 
 static int print_state = 0;
 void thread_print_set(int state)
@@ -361,7 +381,7 @@ pthread_t pthread_self(void)
         t = (pthread_t)calloc(1,sizeof(struct _pthread_v));
 
         /* If cannot initialize main thread, then the only thing we can do is abort */
-        if (!t) abort();
+        if (!__xl_f || !t) abort();
 
         t->p_state = PTHREAD_DEFAULT_ATTR /*| PTHREAD_CREATE_DETACHED*/;
         t->tid = GetCurrentThreadId();
@@ -369,6 +389,7 @@ pthread_t pthread_self(void)
         t->h = GetCurrentThread();
         t->sched.sched_priority = GetThreadPriority(t->h);
         t->ended = 0;
+        t->thread_noposix = 1;
 
         /* Save for later */
         if (!TlsSetValue(_pthread_tls, t)) abort();
@@ -445,6 +466,7 @@ int pthread_exit(void *res)
 
 void _pthread_invoke_cancel(void)
 {
+    pthread_self()->in_cancel = 1;
     _pthread_cleanup *pcup;
     _pthread_setnobreak (1);
     InterlockedDecrement(&_pthread_cancelling);
@@ -506,48 +528,64 @@ int pthread_cancel(pthread_t t)
 	  _ReadWriteBarrier();
       }
     }
-    /*if (tv->ended) return ESRCH;
+    /*if (tv->ended) return ESRCH;*/
     if (pthread_equal(pthread_self(), t))
     {
+      if(tv->cancelled) return (tv->in_cancel ? ESRCH : 0);
       tv->cancelled = 1;
       InterlockedIncrement(&_pthread_cancelling);
-      _pthread_invoke_cancel();
-    }*/
+      if ((tv->p_state & PTHREAD_CANCEL_ASYNCHRONOUS) != 0 && (tv->p_state & PTHREAD_CANCEL_ENABLE) != 0)
+      {
+        tv->p_state &= ~PTHREAD_CANCEL_ENABLE;
+        tv->in_cancel = 1;
+        _pthread_invoke_cancel();
+      }
+      return 0;
+    }
 
-    if (tv->p_state & PTHREAD_CANCEL_ASYNCHRONOUS)
+    if ((tv->p_state & PTHREAD_CANCEL_ASYNCHRONOUS) != 0 && (tv->p_state & PTHREAD_CANCEL_ENABLE) != 0)
     {
         /* Dangerous asynchronous cancelling */
         CONTEXT ctxt;
 
         /* Already done? */
-        if (tv->cancelled) return ESRCH;
+        if(tv->cancelled || tv->in_cancel) return ESRCH;
 
         ctxt.ContextFlags = CONTEXT_CONTROL;
 
         SuspendThread(t->h);
-        GetThreadContext(t->h, &ctxt);
+        if (WaitForSingleObject(t->h, 0) == WAIT_TIMEOUT)
+        {
+	  GetThreadContext(t->h, &ctxt);
 #ifdef _M_X64
-        ctxt.Rip = (uintptr_t) _pthread_invoke_cancel;
+	  ctxt.Rip = (uintptr_t) _pthread_invoke_cancel;
 #else
-        ctxt.Eip = (uintptr_t) _pthread_invoke_cancel;
+	  ctxt.Eip = (uintptr_t) _pthread_invoke_cancel;
 #endif
-        SetThreadContext(tv->h, &ctxt);
+	  SetThreadContext(tv->h, &ctxt);
 
-        /* Also try deferred Cancelling */
-        tv->cancelled = 1;
+	  /* Also try deferred Cancelling */
+	  tv->cancelled = 1;
+          tv->p_state &= ~PTHREAD_CANCEL_ENABLE;
+          tv->in_cancel = 1;
 
-        /* Notify everyone to look */
-        InterlockedIncrement(&_pthread_cancelling);
+	  /* Notify everyone to look */
+	  InterlockedIncrement(&_pthread_cancelling);
 
-        ResumeThread(tv->h);
+	  ResumeThread(tv->h);
+        }
     }
     else
     {
+      if (tv->cancelled == 0)
+      {
         /* Safe deferred Cancelling */
         tv->cancelled = 1;
 
         /* Notify everyone to look */
         InterlockedIncrement(&_pthread_cancelling);
+      }
+      else return (tv->in_cancel ? ESRCH : 0);
     }
 
     return 0;

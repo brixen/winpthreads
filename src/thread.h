@@ -17,7 +17,9 @@ struct _pthread_v
     _pthread_cleanup *clean;
     int nobreak;
     HANDLE h;
-    int cancelled;
+    int cancelled : 2;
+    int in_cancel : 2;
+    int thread_noposix : 2;
     unsigned int p_state;
     unsigned int keymax;
     void **keyval;
