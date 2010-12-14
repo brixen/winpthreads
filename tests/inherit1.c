@@ -160,7 +160,9 @@ main()
       assert(mainParam.sched_priority == prio);
       assert(GetThreadPriority(threadH) ==
                validPriorities[prio+(PTW32TEST_MAXPRIORITIES/2)]);
-
+      if (prio > minPrio && validPriorities[prio+(PTW32TEST_MAXPRIORITIES/2)] ==
+	validPriorities[prio-1+(PTW32TEST_MAXPRIORITIES/2)])
+	continue;
       for (param.sched_priority = prio;
            param.sched_priority <= maxPrio;
            param.sched_priority++)
@@ -171,6 +173,7 @@ main()
           pthread_join(t, &result);
           assert(((int) (size_t) result) == mainParam.sched_priority);
         }
+	fprintf(stderr, "."); fflush(stderr);
     }
 
   return 0;
