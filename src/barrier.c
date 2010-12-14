@@ -28,11 +28,16 @@ int pthread_barrier_destroy(pthread_barrier_t *b_)
       sem_init (&b->sems[0], b->share, 0);
       *b_ = bDestroy;
       pthread_mutex_unlock (&b->m);
-      return EBUSY;
+      return -1;
+    }
+    pthread_mutex_unlock(&b->m);
+    if(pthread_mutex_destroy(&b->m) != 0) {
+     sem_init (&b->sems[0], b->share, 0);
+     sem_init (&b->sems[1], b->share, 0);
+     *b_ = bDestroy;
+     return -1;
     }
     b->valid = DEAD_BARRIER;
-    pthread_mutex_unlock(&b->m);
-    pthread_mutex_destroy(&b->m);
     free(bDestroy);
     return 0;
 

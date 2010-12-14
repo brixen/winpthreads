@@ -409,6 +409,13 @@ pthread_t pthread_self(void)
 	  _endthreadex(rslt);
         }
     }
+    if (!t)
+      return t;
+    while (t->h == INVALID_HANDLE_VALUE)
+    {
+        YieldProcessor();
+        _ReadWriteBarrier();
+    }
 
     return t;
 }
@@ -749,7 +756,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     /* Make sure tv->h has value of INVALID_HANDLE_VALUE */
     _ReadWriteBarrier();
 
-    thrd = (HANDLE) _beginthreadex(NULL, ssize, (unsigned int (__stdcall *)(void *))pthread_create_wrapper, tv, 0, NULL);
+    thrd = (HANDLE) _beginthreadex(NULL, ssize, (unsigned int (__stdcall *)(void *))pthread_create_wrapper, tv, 0x4/*CREATE_SUSPEND*/, NULL);
     if (thrd == INVALID_HANDLE_VALUE)
       thrd = 0;
     /* Failed */
@@ -770,11 +777,18 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     if (!thrd) r = EAGAIN;
     else if (tv->p_state & PTHREAD_CREATE_DETACHED)
     {
-        CloseHandle(thrd);
+        while(ResumeThread(thrd) != 0)
+          Sleep(0);
         _ReadWriteBarrier();
         tv->h = 0;
-    } else
+        CloseHandle(thrd);
+    }
+    else
+    {
       tv->h = thrd;
+      while(ResumeThread(thrd) != 0)
+	Sleep(0);
+    }
     if (r != 0)
     {
       *th = NULL;
