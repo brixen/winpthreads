@@ -728,10 +728,11 @@ int pthread_create_wrapper(void *args)
         _ReadWriteBarrier();
     }
 
-    pthread_setschedparam(tv, SCHED_OTHER, &tv->sched);
+    //pthread_setschedparam(tv, SCHED_OTHER, &tv->sched);
 
     if (!setjmp(tv->jb))
     {
+        tv->evStart=NULL;
         /* Call function and save return value */
         tv->ret_arg = tv->func(tv->ret_arg);
 
@@ -757,7 +758,6 @@ int pthread_create_wrapper(void *args)
 int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
 {
     HANDLE thrd = NULL;
-    int r = 0;
     struct _pthread_v *tv;
     size_t ssize = 0;
 
@@ -774,6 +774,13 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     tv->func = func;
     tv->p_state = PTHREAD_DEFAULT_ATTR;
     tv->h = INVALID_HANDLE_VALUE;
+    tv->evStart = INVALID_HANDLE_VALUE;
+    if (tv->evStart == NULL)
+    {
+      *th = NULL;
+      free (tv);
+      return EAGAIN;
+    }
     tv->valid = LIFE_THREAD;
     tv->sched.sched_priority = THREAD_PRIORITY_NORMAL;
     tv->sched_pol = SCHED_OTHER;
@@ -812,27 +819,26 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
       }
       SetThreadPriority(thrd, pr);
     }
-    if (!thrd) r = EAGAIN;
-    else if (tv->p_state & PTHREAD_CREATE_DETACHED)
+    if (!thrd)
     {
-        while(ResumeThread(thrd) != 0)
-          Sleep(0);
-        _ReadWriteBarrier();
-        tv->h = 0;
-        CloseHandle(thrd);
+      *th = NULL;
+      free(tv);
+      return EAGAIN;
+    }
+    if (tv->p_state & PTHREAD_CREATE_DETACHED)
+    {
+      tv->h = 0;
+      ResumeThread(thrd);
+      CloseHandle(thrd);
     }
     else
     {
       tv->h = thrd;
-      while(ResumeThread(thrd) != 0)
-	Sleep(0);
+      ResumeThread(thrd);
+      while (tv->evStart == INVALID_HANDLE_VALUE)
+        Sleep(0);
     }
-    if (r != 0)
-    {
-      *th = NULL;
-      free(tv);
-    }
-    return r;
+    return 0;
 }
 
 int pthread_join(pthread_t t, void **res)
