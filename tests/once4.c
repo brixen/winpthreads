@@ -159,7 +159,7 @@ main()
   fprintf(stderr,"CPU count: %d\n", cpus);
   if (cpus <= 1) {
     fprintf(stderr, "This test uses realtime scheduling and requires a multi-core to prevent system hang.\n");
-    exit(1);
+    exit(0);
   }
 
   pthread_set_num_processors_np(cpus-1);
