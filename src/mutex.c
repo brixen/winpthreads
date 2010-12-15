@@ -190,7 +190,7 @@ static inline void _UndoWaitCriticalSection(volatile RTL_CRITICAL_SECTION *prc)
 int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 {
     unsigned long long t, ct;
-    int rwait = 0, i = 0, r;
+    int i = 0, r;
 
     if (!ts) return pthread_mutex_lock(m);
     r = mutex_ref(m);
@@ -198,7 +198,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 
     /* Try to lock it without waiting */
     r=_mutex_trylock(m);
-    if (r != EBUSY ) return mutex_unref(m,r);
+    if (r != EBUSY) return mutex_unref(m,r);
     
     mutex_t *_m = (mutex_t *)*m;
     if (_m->type != PTHREAD_MUTEX_NORMAL && COND_LOCKED(_m) && COND_OWNER(_m))
@@ -214,7 +214,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
             printf("%d: Timeout after %d times\n",(int)GetCurrentThreadId(), i);
             return ETIMEDOUT;
         }
-        Sleep(0);
+        if ((i & 1) == 0)
+          Sleep(0);
         /* Try to grab lock */
 	r = pthread_mutex_trylock(m);
 	if (r != EBUSY) break;

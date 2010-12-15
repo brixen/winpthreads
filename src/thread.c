@@ -27,6 +27,11 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
       t = (pthread_t)TlsGetValue(_pthread_tls);
     if (t && t->thread_noposix != 0)
     {
+      if (t->h != NULL)
+      {
+        CloseHandle(t->h);
+        t->h = NULL;
+      }
       free (t);
       t = NULL;
       TlsSetValue(_pthread_tls, t);
@@ -386,8 +391,10 @@ pthread_t pthread_self(void)
         t->p_state = PTHREAD_DEFAULT_ATTR /*| PTHREAD_CREATE_DETACHED*/;
         t->tid = GetCurrentThreadId();
         t->sched_pol = SCHED_OTHER;
-        t->h = GetCurrentThread();
-        t->sched.sched_priority = GetThreadPriority(t->h);
+        t->h = NULL; //GetCurrentThread();
+	if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &t->h, 0, FALSE, DUPLICATE_SAME_ACCESS))
+	  abort ();
+	t->sched.sched_priority = GetThreadPriority(t->h);
         t->ended = 0;
         t->thread_noposix = 1;
 
