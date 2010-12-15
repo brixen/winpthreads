@@ -90,7 +90,7 @@ pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
 int pthread_barrier_wait(pthread_barrier_t *b_)
 {
   long sel;
-  int r;
+  int r, e, rslt;
 
   r = barrier_ref(b_);
   if(r) return r;
@@ -103,16 +103,17 @@ int pthread_barrier_wait(pthread_barrier_t *b_)
   if (b->total == 0)
   {
     b->total = b->count;
-    pthread_mutex_unlock(&b->m);
-    if (b->count > 1)
-      r = sem_post_multiple (&b->sems[sel], b->count - 1);
-    if (!r)
-      r = InterlockedCompareExchange((long*)&b->sel, !sel, sel) == sel ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
-    return barrier_unref(b_,r);
+    b->sel = (sel != 0 ? 0 : 1);
+    e = 1;
+    rslt = PTHREAD_BARRIER_SERIAL_THREAD;
+    r = (b->count > 1 ? sem_post_multiple (&b->sems[sel], b->count - 1) : 0);
   }
+  else { e = 0; rslt= 0; }
   pthread_mutex_unlock(&b->m);
-  if ((r = sem_wait(&b->sems[sel])) == 0)
-    r = InterlockedCompareExchange((long*)&b->sel, !sel, sel) == sel ? PTHREAD_BARRIER_SERIAL_THREAD : 0;
+  if (!e)
+    r = sem_wait(&b->sems[sel]);
+
+  if (!r) r = rslt;
   return barrier_unref(b_,r);
 }
 

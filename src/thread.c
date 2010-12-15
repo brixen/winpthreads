@@ -852,14 +852,6 @@ int pthread_join(pthread_t t, void **res)
 {
     DWORD dwFlags;
     struct _pthread_v *tv = (struct _pthread_v *) t;
-    if (tv && tv->h == INVALID_HANDLE_VALUE)
-    {
-      while (tv->h == INVALID_HANDLE_VALUE)
-      {
-	  YieldProcessor();
-	  _ReadWriteBarrier();
-      }
-    }
     if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
     {
       return ESRCH;
