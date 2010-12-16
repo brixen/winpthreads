@@ -31,6 +31,8 @@ struct _pthread_v
     int ended;
     struct sched_param sched;
     jmp_buf jb;
+    struct _pthread_v *next;
+    int x; /* Internal posix handle.  */
 };
 
 int _pthread_tryjoin(pthread_t t, void **res);

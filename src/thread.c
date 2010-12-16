@@ -17,11 +17,68 @@ static pthread_rwlock_t _pthread_key_lock = PTHREAD_RWLOCK_INITIALIZER;
 static unsigned long _pthread_key_max=0L;
 static unsigned long _pthread_key_sch=0L;
 
+static pthread_t pthr_root = NULL, pthr_last = NULL;
+static spin_t spin_pthr_locked = {0,LIFE_SPINLOCK,0};
+
+static void push_pthread_mem(pthread_t sv)
+{
+  int x;
+  if (!sv || sv->next != NULL)
+    return;
+  x = sv->x + 1;
+  memset (sv, 0, sizeof(struct _pthread_v));
+  _spin_lite_lock(&spin_pthr_locked);
+  if (pthr_last == NULL)
+    pthr_root = pthr_last = sv;
+  else
+    pthr_last->next = sv;
+  sv->x = x;
+  _spin_lite_unlock(&spin_pthr_locked);
+}
+
+static pthread_t pop_pthread_mem(void)
+{
+  pthread_t r = NULL;
+
+  _spin_lite_lock(&spin_pthr_locked);
+  if ((r = pthr_root) == NULL)
+  {
+    _spin_lite_unlock(&spin_pthr_locked);
+    r = (pthread_t)calloc(1,sizeof(struct _pthread_v));
+    return r;
+  }
+  if((pthr_root = r->next) == NULL)
+    pthr_last = NULL;
+  _spin_lite_unlock(&spin_pthr_locked);
+  r->next = NULL;
+  return r;
+}
+
+static void free_pthread_mem(void)
+{
+  pthread_t t;
+  
+  _spin_lite_lock(&spin_pthr_locked);
+  t = pthr_root;
+  pthr_root = pthr_last = NULL;
+  _spin_lite_unlock(&spin_pthr_locked);
+  while (t != NULL)
+  {
+    pthread_t sv = t;
+    t = t->next;
+    free (sv);
+  }
+}
+
 static BOOL WINAPI
 __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
 {
   pthread_t t = NULL;
-  if (dwReason == DLL_THREAD_DETACH)
+  if (dwReason == DLL_PROCESS_DETACH)
+  {
+    free_pthread_mem();
+  }
+  else if (dwReason == DLL_THREAD_DETACH)
   {
     if (_pthread_tls != 0xffffffff)
       t = (pthread_t)TlsGetValue(_pthread_tls);
@@ -32,7 +89,7 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
         CloseHandle(t->h);
         t->h = NULL;
       }
-      free (t);
+      push_pthread_mem(t);
       t = NULL;
       TlsSetValue(_pthread_tls, t);
     }
@@ -330,7 +387,7 @@ int pthread_setspecific(pthread_key_t key, const void *value)
 
 int pthread_equal(pthread_t t1, pthread_t t2)
 {
-    return t1 == t2;
+    return (t1 == NULL ? (t1 == t2) : (t1 == t2 && t1->x == t2->x));
 }
 
 void pthread_tls_init(void)
@@ -383,7 +440,7 @@ pthread_t pthread_self(void)
     /* Main thread? */
     if (!t)
     {
-        t = (pthread_t)calloc(1,sizeof(struct _pthread_v));
+        t = (pthread_t) pop_pthread_mem();
 
         /* If cannot initialize main thread, then the only thing we can do is abort */
         if (!__xl_f || !t) abort();
@@ -408,15 +465,10 @@ pthread_t pthread_self(void)
 	  t = (pthread_t)TlsGetValue(_pthread_tls);
 	  if (t)
 	  {
-	    while (t->h == INVALID_HANDLE_VALUE)
-	    {
-	      Sleep(0);
-	      _ReadWriteBarrier();
-	    }
 	    if (!t->h) {
 		t->valid = DEAD_THREAD;
 		rslt = (unsigned) (size_t) t->ret_arg;
-		free(t);
+		push_pthread_mem(t);
 		t = NULL;
 		TlsSetValue(_pthread_tls, t);
 	    } else
@@ -427,7 +479,7 @@ pthread_t pthread_self(void)
 	      {
 		t->valid = DEAD_THREAD;
 		CloseHandle (t->h);
-		free (t);
+		push_pthread_mem(t);
 		t = NULL;
 		TlsSetValue(_pthread_tls, t);
 	      }
@@ -735,8 +787,6 @@ int pthread_create_wrapper(void *args)
         _ReadWriteBarrier();
     }
 
-    //pthread_setschedparam(tv, SCHED_OTHER, &tv->sched);
-
     if (!setjmp(tv->jb))
     {
         tv->evStart=NULL;
@@ -751,7 +801,7 @@ int pthread_create_wrapper(void *args)
     /* Make sure we free ourselves if we are detached */
     if (!tv->h) {
         tv->valid = DEAD_THREAD;
-        free(tv);
+        push_pthread_mem(tv);
         tv = NULL;
         TlsSetValue(_pthread_tls, tv);
     }
@@ -768,7 +818,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     struct _pthread_v *tv;
     size_t ssize = 0;
 
-    tv = (struct _pthread_v *)calloc(1,sizeof(struct _pthread_v));
+    tv = (struct _pthread_v *) pop_pthread_mem();
 
     if (!tv) return EAGAIN;
 
@@ -782,12 +832,6 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     tv->p_state = PTHREAD_DEFAULT_ATTR;
     tv->h = INVALID_HANDLE_VALUE;
     tv->evStart = INVALID_HANDLE_VALUE;
-    if (tv->evStart == NULL)
-    {
-      *th = NULL;
-      free (tv);
-      return EAGAIN;
-    }
     tv->valid = LIFE_THREAD;
     tv->sched.sched_priority = THREAD_PRIORITY_NORMAL;
     tv->sched_pol = SCHED_OTHER;
@@ -829,7 +873,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     if (!thrd)
     {
       *th = NULL;
-      free(tv);
+      push_pthread_mem(tv);
       return EAGAIN;
     }
     if (tv->p_state & PTHREAD_CREATE_DETACHED)
@@ -872,7 +916,7 @@ int pthread_join(pthread_t t, void **res)
     if (res) *res = tv->ret_arg;
     thread_print(t,"3 pthread_join");
 
-    free(tv);
+    push_pthread_mem(tv);
 
     return 0;
 }
@@ -909,7 +953,7 @@ int _pthread_tryjoin(pthread_t t, void **res)
     /* Obtain return value */
     if (res) *res = tv->ret_arg;
 
-    free(tv);
+    push_pthread_mem(tv);
 
     return 0;
 }
@@ -950,7 +994,7 @@ int pthread_detach(pthread_t t)
       CloseHandle(dw);
       if (tv->ended)
       {
-        free (tv);
+        push_pthread_mem(tv);
       }
     }
 
