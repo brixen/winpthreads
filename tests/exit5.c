@@ -166,7 +166,7 @@ main()
 
       assert(GetExitCodeThread(h[i], (LPDWORD) &result) == TRUE);
 
-      assert(threadbag[i].self->h != NULL && pthread_kill(threadbag[i].self, 0) == ESRCH);
+      assert(pthread_kill(threadbag[i].self, 0) == ESRCH);
 
       fail = (result != 1);
 
