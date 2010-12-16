@@ -95,7 +95,7 @@ struct bag_t_ {
 
 static bag_t threadbag[NUMTHREADS + 1];
 
-void
+unsigned int __fastcall
 Win32thread(void * arg)
 {
   int i;
@@ -176,7 +176,7 @@ main()
 
       assert(GetExitCodeThread(h[i], (LPDWORD) &result) == TRUE);
 
-      assert(threadbag[i].self->h != NULL);
+      //assert(threadbag[i].self->h != NULL);
       assert(pthread_kill(threadbag[i].self, 0) == ESRCH);
 
       fail = (result != (int) (size_t) PTHREAD_CANCELED);
