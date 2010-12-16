@@ -98,7 +98,7 @@ static bag_t threadbag[NUMTHREADS + 1];
 pthread_cond_t CV = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t CVLock = PTHREAD_MUTEX_INITIALIZER;
 
-void
+unsigned int __fastcall
 Win32thread(void * arg)
 {
   bag_t * bag = (bag_t *) arg;
