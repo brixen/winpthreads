@@ -20,7 +20,7 @@ int main(int argc, char * argv[])
     
     if (argc!=2) {
         printf("usage: runall <dir>\n");
-        return EXIT_FAILURE;
+        return 0; //EXIT_FAILURE;
     }
     dir = opendir (argv[1]);
     if (dir != NULL) {
@@ -61,7 +61,7 @@ int main(int argc, char * argv[])
     } else {
         /* could not open directory */
         perror ("");
-        return EXIT_FAILURE;
+        return 0; //EXIT_FAILURE;
     }
     return 0;
 }

@@ -56,7 +56,7 @@ static HINSTANCE _h_kernel32;
 int
 main()
 {
-  LPCRITICAL_SECTION lpcs = NULL;
+  CRITICAL_SECTION cs;
 
   SetLastError(0);
 
@@ -67,15 +67,16 @@ main()
    */
   _h_kernel32 = LoadLibrary(TEXT("KERNEL32.DLL"));
   _try_enter_critical_section =
-        (BOOL (PT_STDCALL *)(LPCRITICAL_SECTION))
+        (BOOL (WINAPI *)(LPCRITICAL_SECTION))
         GetProcAddress(_h_kernel32,
                          (LPCSTR) "TryEnterCriticalSection");
 
   if (_try_enter_critical_section != NULL)
     {
+      InitializeCriticalSection(&cs);
       SetLastError(0);
 
-      (*_try_enter_critical_section)(lpcs);
+      (*_try_enter_critical_section)(&cs);
 
       printf("Last Error [try enter] %ld\n", (long) GetLastError());
     }

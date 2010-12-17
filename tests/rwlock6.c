@@ -93,7 +93,7 @@ main()
   assert(pthread_join(rdt, (void **) &rdResult) == 0);
   assert(pthread_join(wrt2, (void **) &wr2Result) == 0);
 
-  printf ("%d %d %d\n", wr1Result, rdResult, wr2Result);
+  printf ("%d %d %d\n", (int)wr1Result, (int)rdResult, (int)wr2Result);
   assert(wr1Result == 10);
   assert(rdResult == 10);
   assert(wr2Result == 20);
