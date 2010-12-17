@@ -94,7 +94,7 @@ struct bag_t_ {
 
 static bag_t threadbag[NUMTHREADS + 1];
 
-void
+unsigned int __fastcall
 Win32thread(void * arg)
 {
   int result = 1;
