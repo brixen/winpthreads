@@ -115,7 +115,7 @@ const char * error_string[] = {
 # define ASSERT_TRACE 0
 #else
 # undef ASSERT_TRACE
-# define ASSERT_TRACE 1
+# define ASSERT_TRACE 0
 #endif
 
 # define assert(e) \
@@ -162,7 +162,7 @@ enum ptw32_features {
   PTW32_ALERTABLE_ASYNC_CANCEL              = 0x0002  /* Can cancel blocked threads. */
 };
 
-#define pthread_getw32threadhandle_np(self)     ((self)->h)
+#define pthread_getw32threadhandle_np(self)     ((self).p->h)
 
 /* half-stubbed version */
 int pthread_win32_test_features_np(int mask)
