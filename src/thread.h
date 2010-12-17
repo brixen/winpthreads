@@ -11,6 +11,7 @@
 typedef struct _pthread_v _pthread_v;
 struct _pthread_v
 {
+    pthread_t hlp;
     unsigned int valid;   
     void *ret_arg;
     void *(* func)(void *);
