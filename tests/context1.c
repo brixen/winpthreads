@@ -74,8 +74,8 @@
 #define _WIN32_WINNT 0x400
 
 #include "test.h"
-#include "../implement.h"
-#include "../context.h"
+//#include "../implement.h"
+//#include "../context.h"
 
 static int washere = 0;
 
@@ -107,7 +107,7 @@ main()
 
   assert(pthread_create(&t, NULL, func, NULL) == 0);
 
-  hThread = ((ptw32_thread_t *)t.p)->threadH;
+  hThread = (t.p)->h;
 
   Sleep(500);
 
@@ -123,7 +123,12 @@ main()
       context.ContextFlags = CONTEXT_CONTROL;
 
       GetThreadContext(hThread, &context);
-      PTW32_PROGCTR (context) = (DWORD_PTR) anotherEnding;
+#ifdef _M_X64
+	  context.Rip = (uintptr_t) anotherEnding;
+#else
+	  context.Eip = (uintptr_t) anotherEnding;
+#endif
+
       SetThreadContext(hThread, &context);
       ResumeThread(hThread);
     }

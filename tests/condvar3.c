@@ -115,7 +115,7 @@ main()
   struct _timeb currSysTime;
   const DWORD NANOSEC_PER_MILLISEC = 1000000;
 
-  assert((t[0] = pthread_self())->h != NULL);
+  assert((t[0] = pthread_self()).p->h != NULL);
 
   assert(pthread_cond_init(&cv, NULL) == 0);
 

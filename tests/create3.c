@@ -107,7 +107,7 @@ main(int argc, char * argv[])
       exit(0);
     }
 
-  assert((mt = pthread_self())->h != NULL);
+  assert((mt = pthread_self()).p->h != NULL);
 
   for (i = 0; i < NUMTHREADS; i++)
     {

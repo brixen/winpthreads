@@ -114,11 +114,9 @@ main()
       /* thread IDs should be unique */
       assert(!pthread_equal(t, last_t));
       /* thread struct pointers should be the same */
-      assert(t == last_t);
+      assert(t.p == last_t.p);
       /* thread handle reuse counter should be different by one */
-#if 0
       assert(t.x == last_t.x+1);
-#endif
       last_t = t;
     }
 

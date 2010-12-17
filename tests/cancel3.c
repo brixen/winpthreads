@@ -126,7 +126,7 @@ main ()
   int i;
   pthread_t t[NUMTHREADS + 1];
 
-  assert ((t[0] = pthread_self ())->h != NULL);
+  assert ((t[0] = pthread_self ()).p->h != NULL);
 
   for (i = 1; i <= NUMTHREADS; i++)
     {

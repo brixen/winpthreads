@@ -58,7 +58,7 @@ main(int argc, char * argv[])
 	 */
 	_pthread_v *self;
 
-	self = (_pthread_v *)pthread_self();
+	self = (_pthread_v *)pthread_self().p;
 
 	assert(self->h != NULL);
 
