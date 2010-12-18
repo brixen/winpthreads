@@ -123,45 +123,98 @@ void thread_print(volatile pthread_t t, char *txt)
             );
     }
 }
+
+typedef struct collect_once_t {
+  pthread_once_t *o;
+  pthread_mutex_t m;
+  int count;
+  struct collect_once_t *next;
+} collect_once_t;
+
+static collect_once_t *once_obj = NULL;
+
+static spin_t once_global = {0,LIFE_SPINLOCK,0};
+
+static collect_once_t *enterOnceObject(pthread_once_t *o)
+{
+  collect_once_t *c, *p = NULL;
+  _spin_lite_lock(&once_global);
+  c = once_obj;
+  while (c != NULL && c->o != o)
+  {
+    c = (p = c)->next;
+  }
+  if (!c)
+  {
+    c = (collect_once_t *) calloc(1,sizeof(collect_once_t));
+    c->o = o;
+    c->count = 1;
+    if (!p) once_obj = c;
+    else p->next = c;
+    pthread_mutex_init(&c->m, NULL);
+  }
+  else
+    c->count += 1;
+  _spin_lite_unlock(&once_global);
+  return c;
+}
+
+static void leaveOnceObject(collect_once_t *c)
+{
+  collect_once_t *h, *p = NULL;
+  if (!c)
+    return;
+  _spin_lite_lock(&once_global);
+  h = once_obj;
+  while (h != NULL && c != h)
+  {
+    h = (p = h)->next;
+  }
+  if (h)
+  {
+    c->count -= 1;
+    if (c->count == 0)
+    {
+      pthread_mutex_destroy(&c->m);
+      if (!p) once_obj = c->next;
+      else p->next = c->next;
+      free (c);
+    }
+  }
+  else fprintf(stderr, "%p not found?!?!\n", c);
+  _spin_lite_unlock(&once_global);
+}
+
 static void _pthread_once_cleanup(void *o)
 {
-    *(pthread_once_t *)o = 0;
+  collect_once_t *co = (collect_once_t *) o;
+  pthread_mutex_unlock(&co->m);
+  leaveOnceObject(co);
 }
 
 static int _pthread_once_raw(pthread_once_t *o, void (*func)(void))
 {
-    long state = *o;
+  collect_once_t *co;
+  long state = *o;
 
-    CHECK_PTR(o);
-    CHECK_PTR(func);
+  CHECK_PTR(o);
+  CHECK_PTR(func);
 
-    _ReadWriteBarrier();
-
-    while (state != 1)
-    {
-        if (!state)
-        {
-            if (!InterlockedCompareExchange(o, 2, 0))
-            {
-                /* Success */
-                func();
-
-                /* Mark as done */
-                *o = 1;
-
-                return 0;
-            }
-        }
-
-        YieldProcessor();
-
-        _ReadWriteBarrier();
-
-        state = *o;
-    }
-
-    /* Done */
+  if (state == 1)
     return 0;
+  co = enterOnceObject(o);
+  pthread_mutex_lock(&co->m);
+  if (*o == 0)
+  {
+    func();
+    *o = 1;
+  } else if (*o != 1)
+    fprintf (stderr," once %p is %d\n", o, (int) *o);
+  pthread_mutex_unlock(&co->m);
+  leaveOnceObject(co);
+
+  /* Done */
+  return 0;
 }
 
 void *pthread_timechange_handler_np(void * dummy)
@@ -212,40 +265,29 @@ int pthread_set_num_processors_np(int n)
 
 int pthread_once(pthread_once_t *o, void (*func)(void))
 {
-    long state = *o;
+  collect_once_t *co;
+  long state = *o;
 
-    CHECK_PTR(o);
-    CHECK_PTR(func);
+  CHECK_PTR(o);
+  CHECK_PTR(func);
 
-    _ReadWriteBarrier();
-
-    while (state != 1)
-    {
-        if (!state)
-        {
-            if (!InterlockedCompareExchange(o, 2, 0))
-            {
-                /* Success */
-                pthread_cleanup_push(_pthread_once_cleanup, o);
-                func();
-                pthread_cleanup_pop(0);
-                /* Mark as done */
-                *o = 1;
-
-                return 0;
-            }
-        }
-
-        YieldProcessor();
-
-        _ReadWriteBarrier();
-
-        state = *o;
-    }
-
-    /* Done */
+  if (state == 1)
     return 0;
+  co = enterOnceObject(o);
+  pthread_mutex_lock(&co->m);
+  if (*o == 0)
+  {
+    pthread_cleanup_push(_pthread_once_cleanup, co);
+    func();
+    pthread_cleanup_pop(0);
+    *o = 1;
+  } else if (*o != 1)
+    fprintf (stderr," once %p is %d\n", o, (int) *o);
+  pthread_mutex_unlock(&co->m);
+  leaveOnceObject(co);
 
+  /* Done */
+  return 0;
 }
 
 int pthread_key_create(pthread_key_t *key, void (* dest)(void *))
@@ -906,8 +948,8 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     {
       tv->h = thrd;
       ResumeThread(thrd);
-      while (tv->evStart == INVALID_HANDLE_VALUE)
-        Sleep(0);
+     // while (tv->evStart == INVALID_HANDLE_VALUE)
+     //   Sleep(0);
     }
     return 0;
 }

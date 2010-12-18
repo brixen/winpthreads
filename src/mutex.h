@@ -1,6 +1,8 @@
 #ifndef WIN_PTHREADS_MUTEX_H
 #define WIN_PTHREADS_MUTEX_H
 
+#define USE_MUTEX_Mutex
+#undef USE_MUTEX_CriticalSection
 #ifdef USE_MUTEX_CriticalSection
 #define COND_LOCKED(m)	(((_tid_u)m->cs.rc.OwningThread).tid != 0)
 #define COND_OWNER(m)	(((_tid_u)m->cs.rc.OwningThread).tid == GetCurrentThreadId())
@@ -53,7 +55,6 @@ union _tid_u {
     HANDLE	h;
     DWORD	tid;
 };
-
 #endif
 
 typedef struct mutex_t mutex_t;

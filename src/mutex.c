@@ -7,6 +7,8 @@
 #include "mutex.h"
 #include "misc.h"
 
+extern int do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout);
+
 static int print_state = 1;
 void mutex_print_set(int state)
 {
@@ -69,7 +71,14 @@ inline int mutex_static_init(volatile pthread_mutex_t *m )
     return r;
 }
 
+static int pthread_mutex_lock_intern(pthread_mutex_t *m, DWORD timeout);
+
 int pthread_mutex_lock(pthread_mutex_t *m)
+{
+  return pthread_mutex_lock_intern(m, INFINITE);
+}
+
+static int pthread_mutex_lock_intern(pthread_mutex_t *m, DWORD timeout)
 {
     int r = mutex_ref(m);
     if(r) return r;
@@ -90,27 +99,27 @@ int pthread_mutex_lock(pthread_mutex_t *m)
 	}
       }
     } else {
+#if !defined USE_MUTEX_Mutex
       if (COND_OWNER(_m))
       {
 	do {
 	  Sleep(0);
 	} while (COND_OWNER(_m));
       }
+#endif
     }
 #if defined USE_MUTEX_Mutex
-    switch (WaitForSingleObject(_m->h, INFINITE)) {
-        case WAIT_OBJECT_0:
-            /* OK */
-            break;
-        default:
-           return mutex_unref(m,EINVAL);
-    }
+    r = do_sema_b_wait_intern (_m->h, 1, timeout);
 #else /* USE_MUTEX_CriticalSection */
     EnterCriticalSection(&_m->cs.cs);
+    r = 0;
 #endif
-    _m->count = 1;
-    SET_OWNER(_m);
-    return mutex_unref(m,0);
+    if (r == 0)
+    {
+      _m->count = 1;
+      SET_OWNER(_m);
+    }
+    return mutex_unref(m,r);
 
 }
 
@@ -203,10 +212,13 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
     mutex_t *_m = (mutex_t *)*m;
     if (_m->type != PTHREAD_MUTEX_NORMAL && COND_LOCKED(_m) && COND_OWNER(_m))
       return mutex_unref(m,EDEADLK);
-    mutex_unref(m,EDEADLK);
     ct = _pthread_time_in_ms();
     t = _pthread_time_in_ms_from_timespec(ts);
-    
+#ifdef USE_MUTEX_Mutex
+   mutex_unref(m,r);
+   r = pthread_mutex_lock_intern(m, (ct > t ? 0 : (t - ct)));
+#else
+    mutex_unref(m,EDEADLK);
     while (1)
     {
         /* Have we waited long enough? A high count means we busy-waited probably.*/
@@ -223,6 +235,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
         ct = _pthread_time_in_ms();
         i ++;
     }
+#endif
     return  r;
 }
 
@@ -246,7 +259,7 @@ int pthread_mutex_unlock(pthread_mutex_t *m)
     }
 #if defined USE_MUTEX_Mutex
     UNSET_OWNER(_m);
-    if (_m->h != NULL && !ReleaseMutex(_m->h)) {
+    if (_m->h != NULL && !ReleaseSemaphore(_m->h, 1, NULL)) {
     	SET_OWNER(_m);
         /* restore our own bookkeeping */
         return mutex_unref(m,EPERM);
@@ -276,16 +289,8 @@ int _mutex_trylock(pthread_mutex_t *m)
     } else if (COND_LOCKED(_m))
       return EBUSY;
 #if defined USE_MUTEX_Mutex
-    switch (WaitForSingleObject(_m->h, 0)) {
-        case WAIT_TIMEOUT:
-            r = EBUSY;
-            break;
-        case WAIT_OBJECT_0:
-            /* OK */
-            break;
-        default:
-            r = EINVAL;
-     }
+    r = do_sema_b_wait_intern (_m->h, 1, 0);
+    if (r == ETIMEDOUT) r = EBUSY;
 #else /* USE_MUTEX_CriticalSection */
     r = TryEnterCriticalSection(&_m->cs.cs) ? 0 : EBUSY;
 #endif
@@ -348,7 +353,7 @@ int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
     }
     if (!r) {
 #if defined USE_MUTEX_Mutex
-        if ( (_m->h = CreateMutex(NULL, FALSE, NULL)) != NULL) {
+        if ( (_m->h = CreateSemaphore(NULL, 1, 0x7fffffff, NULL)) != NULL) {
 #else /* USE_MUTEX_CriticalSection */
         if (InitializeCriticalSectionAndSpinCount(&_m->cs.cs, USE_MUTEX_CriticalSection_SpinCount)) {
 #endif
