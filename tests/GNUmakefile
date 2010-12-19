@@ -36,7 +36,34 @@ DLL_VER	= 2
 .PRECIOUS: $(*.exe) $(*.pass)
 .SECONDARY:
 
-CC	= x86_64-w64-mingw32-gcc
+target  = $(CROSS)
+
+ifeq (,$(findstring i686, $(WTHR_TARGET_ARCH)))
+ifeq (,$(findstring x86_64, $(target)))
+#32bit
+BITNESS=-m32
+DLLFLAG=-m i386
+WINDRESFLAG=pe-i386
+else
+#64bit
+BITNESS=-m64
+DLLFLAG=-m i386:x86-64
+WINDRESFLAG=pe-x86-64
+endif
+else
+ifeq (,$(findstring x86_64, $(WTHR_TARGET_ARCH)))
+#32bit
+BITNESS=-m32
+DLLFLAG=-m i386
+WINDRESFLAG=pe-i386
+else
+BITNESS=-m64
+DLLFLAG=-m i386:x86-64
+WINDRESFLAG=pe-x86-64
+endif
+endif
+
+CC      = $(target)-gcc $(BITNESS)
 CP	= cp -f
 MV	= mv -f
 RM	= rm -f
@@ -57,7 +84,7 @@ XXCFLAGS	=
 XXLIBS	= -lws2_32 -lgomp
 CFLAGS	= -O3 -UNDEBUG -Wall $(XXCFLAGS)
 BUILD_DIR	= ..
-INCLUDES	= -I.
+INCLUDES	= -I./include
 
 
 TEST	= GC
@@ -67,13 +94,44 @@ GCX	= $(TEST)$(DLL_VER)
 
 # Files we need to run the tests
 # - paths are relative to pthreads build dir.
-# HDR	= pthread.h
-LIB	= libpthread$(GCX).a
-# DLL	= pthread$(GCX).dll
+HDR	= include/pthread.h include/semaphore.h
+ifeq (,$(findstring i686, $(WTHR_TARGET_ARCH)))
+ifeq (,$(findstring x86_64, $(target)))
+#32bit
+LIB	= ./outlib/libpthread$(GCX)-32.dll.a
+LIBSTATIC	= ./outlib/libpthread$(GCX)-32.a
+DLL	= ./outlib/pthread$(GCX)-32.dll
+LINKAGEFLAG	= -lpthread$(GCX)-32
+else
+#64bit
+LIB	= ./outlib/libpthread$(GCX)-64.dll.a
+LIBSTATIC	= ./outlib/libpthread$(GCX)-64.a
+DLL	= ./outlib/pthread$(GCX)-64.dll
+LINKAGEFLAG	= -lpthread$(GCX)-64
+endif
+else
+ifeq (,$(findstring x86_64, $(WTHR_TARGET_ARCH)))
+#32bit
+LIB	= ./outlib/libpthread$(GCX)-32.dll.a
+LIBSTATIC	= ./outlib/libpthread$(GCX)-32.a
+DLL	= ./outlib/pthread$(GCX)-32.dll
+LINKAGEFLAG	= -lpthread$(GCX)-32
+else
+LIB	= ./outlib/libpthread$(GCX)-64.dll.a
+LIBSTATIC	= ./outlib/libpthread$(GCX)-64.a
+DLL	= ./outlib/pthread$(GCX)-64.dll
+LINKAGEFLAG	= -lpthread$(GCX)-64
+endif
+endif
+
+ifdef $(WTHR_STATIC_LIB)
+LIB	= $(LIBSTATIC)
+endif
+
 # The next path is relative to $BUILD_DIR
 # QAPC	= ../QueueUserAPCEx/User/quserex.dll
 
-COPYFILES	= $(HDR) $(LIB) $(DLL) $(QAPC)
+COPYFILES	= $(HDR) $(QAPC)
 
 # If a test case returns a non-zero exit code to the shell, make will
 # stop.
@@ -170,37 +228,73 @@ all:
 	@ $(MAKE) clean GCE
 
 GC:
-	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-fopenmp -D__CLEANUP_C" all-pass
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIB)
+	@ $(CP) $(BUILD_DIR)/$(LIB) .
+	@ $(ECHO) Copying $(BUILD_DIR)/$(DLL)
+	@ $(CP) $(BUILD_DIR)/$(DLL) .
+	$(MAKE) TEST=GC CC=$(CROSS)-gcc XXCFLAGS="-fopenmp -D__CLEANUP_C" all-pass
 
 GCE:
-	$(MAKE) TEST=GCE CC=x86_64-w64-mingw32-g++ XXCFLAGS="-fopenmp -mthreads -D__CLEANUP_CXX" all-pass
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIB)
+	@ $(CP) $(BUILD_DIR)/$(LIB) .
+	@ $(ECHO) Copying $(BUILD_DIR)/$(DLL)
+	@ $(CP) $(BUILD_DIR)/$(DLL) .
+	$(MAKE) TEST=GCE CC=$(CROSS)-g++ XXCFLAGS="-fopenmp -mthreads -D__CLEANUP_CXX" all-pass
 
 GCX:
-	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-g++ XXCFLAGS="-fopenmp -mthreads -D__CLEANUP_C" all-pass
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIB)
+	@ $(CP) $(BUILD_DIR)/$(LIB) .
+	@ $(ECHO) Copying $(BUILD_DIR)/$(DLL)
+	@ $(CP) $(BUILD_DIR)/$(DLL) .
+	$(MAKE) TEST=GC CC=$(CROSS)-g++ XXCFLAGS="-fopenmp -mthreads -D__CLEANUP_C" all-pass
 
 GC-bench:
-	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-D__CLEANUP_C" XXLIBS="benchlib.o" all-bench
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIB)
+	@ $(CP) $(BUILD_DIR)/$(LIB) .
+	@ $(ECHO) Copying $(BUILD_DIR)/$(DLL)
+	@ $(CP) $(BUILD_DIR)/$(DLL) .
+	$(MAKE) TEST=GC CC=$(CROSS)-gcc XXCFLAGS="-D__CLEANUP_C" XXLIBS="benchlib.o" all-bench
 
 GC-bench-static:
-	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-D__CLEANUP_C -DPTW32_STATIC_LIB" XXLIBS="benchlib.o -lws2_32" all-bench
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIBSTATIC)
+	@ $(CP) $(BUILD_DIR)/$(LIBSTATIC) .
+	$(MAKE) TEST=GC CC=$(CROSS)-gcc XXCFLAGS="-D__CLEANUP_C -DWTHR_STATIC_LIB" XXLIBS="benchlib.o -lws2_32" all-bench
 
 GCE-bench:
-	$(MAKE) TEST=GCE  CC=x86_64-w64-mingw32-g++ XXCFLAGS="-mthreads -D__CLEANUP_CXX" XXLIBS="benchlib." all-bench
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIB)
+	@ $(CP) $(BUILD_DIR)/$(LIB) .
+	@ $(ECHO) Copying $(BUILD_DIR)/$(DLL)
+	@ $(CP) $(BUILD_DIR)/$(DLL) .
+	$(MAKE) TEST=GCE  CC=$(CROSS)-g++ XXCFLAGS="-mthreads -D__CLEANUP_CXX" XXLIBS="benchlib." all-bench
 
 GC-debug:
-	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-fopenmp -D__CLEANUP_C" DLL_VER="$(DLL_VER)d" all-pass
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIB)
+	@ $(CP) $(BUILD_DIR)/$(LIB) .
+	@ $(ECHO) Copying $(BUILD_DIR)/$(DLL)
+	@ $(CP) $(BUILD_DIR)/$(DLL) .
+	$(MAKE) TEST=GC CC=$(CROSS)-gcc XXCFLAGS="-fopenmp -D__CLEANUP_C" DLL_VER="$(DLL_VER)d" all-pass
 
 GC-static:
-	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-D__CLEANUP_C -DPTW32_STATIC_LIB" XXLIBS="-lws2_32" DLL="" all-static
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIBSTATIC)
+	@ $(CP) $(BUILD_DIR)/$(LIBSTATIC) .
+	$(MAKE) TEST=GC CC=$(CROSS)-gcc XXCFLAGS="-D__CLEANUP_C -DWTHR_STATIC_LIB" XXLIBS="-lws2_32" DLL="" all-static
 
 GC-stress:
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIB)
+	@ $(CP) $(BUILD_DIR)/$(LIB) .
+	@ $(ECHO) Copying $(BUILD_DIR)/$(DLL)
+	@ $(CP) $(BUILD_DIR)/$(DLL) .
 	$(ECHO) Stress tests can take a long time since they are trying to
 	$(ECHO) expose weaknesses that may be intermittant or statistically rare.
 	$(ECHO) A pass does not prove correctness, but may give greater confidence.
-	$(MAKE) TEST=GC CC=x86_64-w64-mingw32-gcc XXCFLAGS="-D__CLEANUP_C" XXLIBS="" all-stress
+	$(MAKE) TEST=GC CC=$(CROSS)-gcc XXCFLAGS="-D__CLEANUP_C" XXLIBS="" all-stress
 
 GCE-stress:
-	$(MAKE) TEST=GCE  CC=x86_64-w64-mingw32-g++ XXCFLAGS="-mthreads -D__CLEANUP_CXX" XXLIBS="" all-stress
+	@ $(ECHO) Copying $(BUILD_DIR)/$(LIB)
+	@ $(CP) $(BUILD_DIR)/$(LIB) .
+	@ $(ECHO) Copying $(BUILD_DIR)/$(DLL)
+	@ $(CP) $(BUILD_DIR)/$(DLL) .
+	$(MAKE) TEST=GCE  CC=$(CROSS)-g++ XXCFLAGS="-mthreads -D__CLEANUP_CXX" XXLIBS="" all-stress
 
 all-pass: $(PASSES)
 	@ $(ECHO) ALL TESTS PASSED! Congratulations!
@@ -365,21 +459,21 @@ sizes.pass: sizes.exe
 	@ $(ECHO) Passed
 	@ $(TOUCH) $@
 
-%.bench: $(LIB) $(DLL) $(HDR) $(QAPC) $(XXLIBS) %.exe
+%.bench: $(HDR) $(QAPC) $(XXLIBS) %.exe
 	@ $(ECHO) Running $*
 	./$*
 	@ $(ECHO) Done
 	@ $(TOUCH) $@
 
-benchtest%.exe: benchtest%.c $(LIB) $(DLL) $(HDR) $(QAPC)
+benchtest%.exe: benchtest%.c $(HDR) $(QAPC)
 	@ $(ECHO) Compiling $@
-	@ $(ECHO) $(CC) $(CFLAGS) benchlib.o -o $@ $< $(INCLUDES) -L. -lpthread$(GCX) -lsupc++ $(XXLIBS)
-	@ $(CC) $(CFLAGS) benchlib.o -o $@ $< $(INCLUDES) -L. -lpthread$(GCX) -lsupc++ $(XXLIBS)
+	@ $(ECHO) $(CC) $(CFLAGS) benchlib.o -o $@ $< $(INCLUDES) -L../outlib $(LINKAGEFLAG) -lsupc++ $(XXLIBS)
+	@ $(CC) $(CFLAGS) benchlib.o -o $@ $< $(INCLUDES) -L../outlib $(LINKAGEFLAG) -lsupc++ $(XXLIBS)
 
-%.exe: %.c $(LIB) $(DLL) $(HDR) $(QAPC)
+%.exe: %.c $(HDR) $(QAPC)
 	@ $(ECHO) Compiling $@
-	@ $(ECHO) $(CC) $(CFLAGS) -o $@ $< $(INCLUDES) -L. -lpthread$(GCX) -lsupc++ $(XXLIBS)
-	@ $(CC) $(CFLAGS) -o $@ $< $(INCLUDES) -L. -lpthread$(GCX) -lsupc++ $(XXLIBS)
+	@ $(ECHO) $(CC) $(CFLAGS) -o $@ $< $(INCLUDES) -L../outlib $(LINKAGEFLAG) -lsupc++ $(XXLIBS)
+	@ $(CC) $(CFLAGS) -o $@ $< $(INCLUDES) -L../outlib $(LINKAGEFLAG) -lsupc++ $(XXLIBS)
 
 %.pre: %.c $(HDR)
 	@ $(CC) -E $(CFLAGS) -o $@ $< $(INCLUDES)
@@ -396,8 +490,8 @@ benchlib.o: benchlib.c
 	@ $(ECHO) $(CC) -c $(CFLAGS) $< $(INCLUDES)
 	@ $(CC) -c $(CFLAGS) $< $(INCLUDES)
 
-pthread.dll: $(DLL)
-	@ $(CP) $(DLL) $@
+pthread.dll:
+	@ $(ECHO) Preparing loadfree test
 
 clean:
 	- $(RM) *.dll
