@@ -1,6 +1,7 @@
 #ifndef WIN_SEM
 #define WIN_SEM
 
+#include <windows.h>
 #include "mutex.h"
 
 #define LIFE_SEM 0xBAB1F00D

@@ -1,6 +1,8 @@
 #ifndef WIN_PTHREADS_COND_H
 #define WIN_PTHREADS_COND_H
 
+#include <windows.h>
+
 #define CHECK_COND(c)  { \
     if (!(c) || !*c || (*c == PTHREAD_COND_INITIALIZER) \
         || ( ((cond_t *)(*c))->valid != (unsigned int)LIFE_COND ) ) \

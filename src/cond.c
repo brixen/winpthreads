@@ -639,13 +639,13 @@ int do_sema_b_release(HANDLE sema, LONG count,CRITICAL_SECTION *cs, LONG *val)
     return ERANGE;
   }
   wc = -val[0];
-  InterlockedAdd(val, count);
+  InterlockedExchangeAdd(val, count);
   if (wc <= 0 || ReleaseSemaphore(sema, (wc < count ? wc : count), NULL))
   {
     LeaveCriticalSection(cs);
     return 0;
   }
-  InterlockedAdd(val, -count);
+  InterlockedExchangeAdd(val, -count);
   LeaveCriticalSection(cs);
   return EINVAL;  
 }

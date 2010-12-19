@@ -248,7 +248,7 @@ int sem_post_multiple(sem_t *sem, int count)
     return sem_result(ERANGE);
   }
   waiters_count = -sv->value;
-  InterlockedAdd((long*)&sv->value, (long) count);
+  InterlockedExchangeAdd((long*)&sv->value, (long) count);
   if (waiters_count <= 0)
   {
     pthread_mutex_unlock(&sv->vlock);
@@ -256,7 +256,7 @@ int sem_post_multiple(sem_t *sem, int count)
   }
   if (!ReleaseSemaphore(sv->s, waiters_count < count ? waiters_count : count, NULL))
   {
-    InterlockedAdd((long*)&sv->value, (long) -count);
+    InterlockedExchangeAdd((long*)&sv->value, (long) -count);
     pthread_mutex_unlock(&sv->vlock);
     return sem_result(EINVAL);
   }
