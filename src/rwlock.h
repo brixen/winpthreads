@@ -31,5 +31,4 @@ struct rwlock_t {
 void rwl_print(volatile pthread_rwlock_t *rwl, char *txt);
 void rwl_print_set(int state);
 
-inline int rwlock_static_init(volatile pthread_rwlock_t *r);
 #endif
