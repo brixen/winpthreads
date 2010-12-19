@@ -129,7 +129,6 @@ main()
   struct _timeb currSysTime;
   const DWORD NANOSEC_PER_MILLISEC = 1000000;
 
-  cond_print_set(1,stderr);
   assert(pthread_cond_init(&cv, NULL) == 0);
 
   assert(pthread_mutex_init(&mutex, NULL) == 0);
@@ -175,11 +174,6 @@ main()
 
   {
   int result = pthread_cond_destroy(&cv);
-  if (result != 0)
-    {
-        cond_print(&cv, "Result");
-	    fflush(stderr);
-    }
   assert(result == 0);
   }
 

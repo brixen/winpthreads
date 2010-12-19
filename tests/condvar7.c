@@ -139,9 +139,6 @@ mythread(void * arg)
 
   while (! (cvthing.shared > 0)) {
       int r = pthread_cond_timedwait(&cvthing.notbusy, &cvthing.lock, &abstime);
-      if (r) {
-          cond_print(&cvthing.notbusy,"condvar7 Fail");
-      }
       assert(r == 0);
   }
 
