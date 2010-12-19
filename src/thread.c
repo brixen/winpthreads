@@ -87,6 +87,7 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
       t = (_pthread_v *)TlsGetValue(_pthread_tls);
     if (t && t->thread_noposix != 0)
     {
+      _pthread_cleanup_dest(t->hlp);
       if (t->h != NULL)
       {
         CloseHandle(t->h);
@@ -95,6 +96,21 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
       push_pthread_mem(t);
       t = NULL;
       TlsSetValue(_pthread_tls, t);
+    }
+    else if (t && t->ended == 0)
+    {
+      t->ended = 1;
+      _pthread_cleanup_dest(t->hlp);
+      if ((t->p_state & PTHREAD_CREATE_DETACHED) == PTHREAD_CREATE_DETACHED)
+      {
+	t->valid = DEAD_THREAD;
+	if (t->h != NULL)
+	  CloseHandle (t->h);
+	t->h = NULL;
+	push_pthread_mem(t);
+	t = NULL;
+	TlsSetValue(_pthread_tls, t);
+      }
     }
   }
   return TRUE;
@@ -531,6 +547,7 @@ pthread_t pthread_self(void)
 	      {
 		t->valid = DEAD_THREAD;
 		CloseHandle (t->h);
+		t->h = NULL;
 		push_pthread_mem(t);
 		t = NULL;
 		TlsSetValue(_pthread_tls, t);
@@ -851,12 +868,25 @@ int pthread_create_wrapper(void *args)
 
     if (!setjmp(tv->jb))
     {
-        tv->evStart=NULL;
-        /* Call function and save return value */
-        tv->ret_arg = tv->func(tv->ret_arg);
-
-        /* Clean up destructors */
-        _pthread_cleanup_dest(tv->hlp);
+      intptr_t trslt = (intptr_t) 128;
+      tv->evStart=NULL;
+      /* Provide to this thread a default exception handler.  */
+      #ifdef __SEH__
+	asm ("\t.tl_start:\n"
+	  "\t.seh_handler __C_specific_handler, @except\n"
+	  "\t.seh_handlerdata\n"
+	  "\t.long 1\n"
+	  "\t.rva .tl_start, .tl_end, _gnu_exception_handler ,.tl_end\n"
+	  "\t.text"
+	  );
+      #endif      /* Call function and save return value */
+      trslt = (intptr_t) tv->func(tv->ret_arg);
+      #ifdef __SEH__
+	asm ("\t.tl_end: nop\n");
+      #endif
+      tv->ret_arg = (void*) trslt;
+      /* Clean up destructors */
+      _pthread_cleanup_dest(tv->hlp);
     }
 
     rslt = (unsigned) (size_t) tv->ret_arg;
