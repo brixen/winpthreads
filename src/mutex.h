@@ -73,8 +73,6 @@ struct mutex_t
 #endif
 };
 
-inline int mutex_static_init(volatile pthread_mutex_t *m);
-int _mutex_trylock(pthread_mutex_t *m);
 void mutex_print(volatile pthread_mutex_t *m, char *txt);
 void mutex_print_set(int state);
 

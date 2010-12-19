@@ -1,8 +1,69 @@
 #include <windows.h>
+#include <stdio.h>
 #include "pthread.h"
 #include "barrier.h"
 #include "ref.h" 
 #include "misc.h"
+#include "spinlock.h"
+
+static spin_t barrier_global = {0,LIFE_SPINLOCK,0};
+
+static __attribute__((noinline)) int
+barrier_unref(volatile pthread_barrier_t *barrier, int res)
+{
+    _spin_lite_lock(&barrier_global);
+#ifdef WINPTHREAD_DBG
+    assert((((barrier_t *)*barrier)->valid == LIFE_BARRIER) && (((barrier_t *)*barrier)->busy > 0));
+#endif
+     ((barrier_t *)*barrier)->busy--;
+    _spin_lite_unlock(&barrier_global);
+    return res;
+}
+
+static __attribute__((noinline)) int barrier_ref(volatile pthread_barrier_t *barrier)
+{
+    int r = 0;
+    _spin_lite_lock(&barrier_global);
+
+    if (!barrier || !*barrier || ((barrier_t *)*barrier)->valid != LIFE_BARRIER) r = EINVAL;
+    else {
+        ((barrier_t *)*barrier)->busy ++;
+    }
+
+    _spin_lite_unlock(&barrier_global);
+
+    return r;
+}
+
+static __attribute__((noinline))  int
+barrier_ref_destroy(volatile pthread_barrier_t *barrier, pthread_barrier_t *bDestroy)
+{
+    int r = 0;
+
+    *bDestroy = NULL;
+    if (_spin_lite_trylock(&barrier_global)) return EBUSY;
+    
+    if (!barrier || !*barrier || ((barrier_t *)*barrier)->valid != LIFE_BARRIER) r = EINVAL;
+    else {
+        barrier_t *b_ = (barrier_t *)*barrier;
+        if (b_->busy) r = EBUSY;
+        else {
+            *bDestroy = *barrier;
+            *barrier = NULL;
+        }
+    }
+
+    _spin_lite_unlock(&barrier_global);
+    return r;
+}
+
+static __attribute__((noinline)) void
+barrier_ref_set (volatile pthread_barrier_t *barrier, void *v)
+{
+  _spin_lite_lock(&barrier_global);
+  *barrier = v;
+  _spin_lite_unlock(&barrier_global);
+}
 
 int pthread_barrier_destroy(pthread_barrier_t *b_)
 {
@@ -82,7 +143,6 @@ pthread_barrier_init (pthread_barrier_t *b_, void *attr, unsigned int count)
        return ENOMEM;
     }
     barrier_ref_set (b_,b);
-    /* *b_ = b; */
 
     return 0;
 }
