@@ -118,6 +118,7 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
 
 PIMAGE_TLS_CALLBACK __xl_f __attribute__ ((section (".CRT$XLF"))) = (PIMAGE_TLS_CALLBACK) __dyn_tls_pthread;
 
+#ifdef WINPTHREAD_DBG
 static int print_state = 0;
 void thread_print_set(int state)
 {
@@ -139,6 +140,7 @@ void thread_print(volatile pthread_t t, char *txt)
             );
     }
 }
+#endif
 
 typedef struct collect_once_t {
   pthread_once_t *o;
@@ -992,7 +994,6 @@ int pthread_join(pthread_t t, void **res)
       return ESRCH;
     if ((tv->p_state & PTHREAD_CREATE_DETACHED) != 0)
       return EINVAL;
-    thread_print(t,"1 pthread_join");
     if (pthread_equal(pthread_self(), t)) return EDEADLK;
 
     pthread_testcancel();
@@ -1000,11 +1001,9 @@ int pthread_join(pthread_t t, void **res)
     if (tv->ended == 0)
     WaitForSingleObject(tv->h, INFINITE);
     CloseHandle(tv->h);
-    thread_print(t,"2 pthread_join");
 
     /* Obtain return value */
     if (res) *res = tv->ret_arg;
-    thread_print(t,"3 pthread_join");
 
     push_pthread_mem(tv);
 

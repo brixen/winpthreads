@@ -11,7 +11,6 @@ extern int do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout);
 static __attribute__((noinline)) int mutex_static_init(volatile pthread_mutex_t *m);
 static __attribute__((noinline)) int _mutex_trylock(pthread_mutex_t *m);
 
-static int print_state = 1;
 static spin_t mutex_global = {0,LIFE_SPINLOCK,0};
 
 static __attribute__((noinline)) int
@@ -28,7 +27,8 @@ mutex_unref(volatile pthread_mutex_t *m, int r)
 }
 
 /* External: must be called by owner of a locked mutex: */
-inline int mutex_ref_ext(volatile pthread_mutex_t *m)
+static __attribute__((noinline)) int
+mutex_ref_ext(volatile pthread_mutex_t *m)
 {
     int r = 0;
     mutex_t *m_ = (mutex_t *)*m;
@@ -123,6 +123,9 @@ static __attribute__((noinline)) int mutex_ref_init(volatile pthread_mutex_t *m 
     return r;
 }
 
+#ifdef WINPTHREAD_DBG
+static int print_state = 1;
+
 void mutex_print_set(int state)
 {
     print_state = state;
@@ -144,6 +147,7 @@ void mutex_print(volatile pthread_mutex_t *m, char *txt)
             (int)GET_OWNER(m_),(int)(m_->count),(int)GET_RCNT(m_),GET_HANDLE(m_),txt);
     }
 }
+#endif
 
 static __attribute__((noinline)) int
 mutex_static_init(volatile pthread_mutex_t *m )

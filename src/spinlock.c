@@ -20,12 +20,10 @@ spinlock_static_init (pthread_spinlock_t *l)
   {
     /* Check that somebody called destroy already.  Otherwise assume someone crept in between.  */
     ret = (*l == NULL ? EINVAL : 0);
-    /*fprintf(stderr, "Not equal ?! %d\n", ret); fflush(stderr);*/
   }
   else
   {
     ret = pthread_spin_init(l, PTHREAD_PROCESS_PRIVATE);
-    /*fprintf(stderr, "Equal but %d\n", ret); fflush(stderr);*/
   }
   _spin_lite_unlock(&spin_locked);
   return ret;

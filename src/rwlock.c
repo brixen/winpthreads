@@ -7,7 +7,6 @@
 #include "spinlock.h"
 #include "misc.h"
 
-static int print_state = 0;
 static spin_t rwl_global = {0,LIFE_SPINLOCK,0};
 
 static __attribute__((noinline)) int rwlock_static_init(pthread_rwlock_t *rw);
@@ -79,11 +78,6 @@ static __attribute__((noinline)) int rwl_ref_destroy(pthread_rwlock_t *rwl, pthr
     return r;
 }
 
-void rwl_print_set(int state)
-{
-    print_state = state;
-}
-
 static int rwlock_gain_both_locks(rwlock_t *rwlock)
 {
   int ret;
@@ -108,6 +102,13 @@ static int rwlock_free_both_locks(rwlock_t *rwlock, int last_fail)
   return ret;
 }
 
+#ifdef WINPTHREAD_DBG
+static int print_state = 0;
+void rwl_print_set(int state)
+{
+    print_state = state;
+}
+
 void rwl_print(volatile pthread_rwlock_t *rwl, char *txt)
 {
     if (!print_state) return;
@@ -123,6 +124,7 @@ void rwl_print(volatile pthread_rwlock_t *rwl, char *txt)
             0L,0L,NULL,txt);
     }
 }
+#endif
 
 static spin_t cond_locked = {0,LIFE_SPINLOCK,0};
 

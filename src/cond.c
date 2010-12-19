@@ -14,14 +14,14 @@
 
 int __pthread_shallcancel (void);
 
-static int print_state = 0;
-static FILE *fo = NULL;
-
 int do_sema_b_wait (HANDLE sema, int nointerrupt, DWORD timeout,CRITICAL_SECTION *cs, LONG *val);
 int do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout);
 
 int do_sema_b_release(HANDLE sema, LONG count,CRITICAL_SECTION *cs, LONG *val);
 
+#ifdef WINPTHREAD_DBG
+static int print_state = 0;
+static FILE *fo;
 void cond_print_set(int state, FILE *f)
 {
     if (f) fo = f;
@@ -47,6 +47,7 @@ void cond_print(volatile pthread_cond_t *c, char *txt)
             );
     }
 }
+#endif
 
 static spin_t cond_locked = {0,LIFE_SPINLOCK,0};
 

@@ -46,7 +46,7 @@
 
 #include <sys/timeb.h>
 
-#define WINPTHREAD_DBG                      1
+/* #define WINPTHREAD_DBG 1 */
 
 /* Compatibility stuff: */
 #define RWLS_PER_THREAD						8
