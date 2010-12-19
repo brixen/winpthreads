@@ -163,7 +163,8 @@ main()
   }
 
   pthread_set_num_processors_np(cpus-1);
-  SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+  //SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+  SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
   /* Set main thread to lower prio than threads */
   SetThreadPriority(GetCurrentThread(), -2);
   printf("CPU count (reduced): %d\n", pthread_num_processors_np());
