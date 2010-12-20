@@ -42,7 +42,9 @@ mutex_ref(pthread_mutex_t *m )
     }
     if (STATIC_INITIALIZER(*m))
     {
+      _spin_lite_unlock(&mutex_global);
       r = mutex_static_init(m);
+      _spin_lite_lock(&mutex_global);
       if (r != 0 && r != EBUSY)
       {
 	_spin_lite_unlock(&mutex_global);
@@ -186,10 +188,12 @@ int pthread_mutex_lock(pthread_mutex_t *m)
 
 static int pthread_mutex_lock_intern(pthread_mutex_t *m, DWORD timeout)
 {
-    int r = mutex_ref(m);
+    mutex_t *_m;
+    int r;
+    r = mutex_ref(m);
     if(r) return r;
 
-    mutex_t *_m = (mutex_t *)*m;
+    _m = (mutex_t *)*m;
     if (_m->type != PTHREAD_MUTEX_NORMAL)
     {
       if (COND_LOCKED(_m))
