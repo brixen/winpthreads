@@ -8,13 +8,14 @@
 #include "misc.h"
 
 extern int do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout);
-static __attribute__((noinline)) int mutex_static_init(volatile pthread_mutex_t *m);
+static __attribute__((noinline)) int mutex_static_init(pthread_mutex_t *m);
 static __attribute__((noinline)) int _mutex_trylock(pthread_mutex_t *m);
 
 static spin_t mutex_global = {0,LIFE_SPINLOCK,0};
+static spin_t mutex_global_static = {0,LIFE_SPINLOCK,0};
 
 static __attribute__((noinline)) int
-mutex_unref(volatile pthread_mutex_t *m, int r)
+mutex_unref(pthread_mutex_t *m, int r)
 {
     mutex_t *m_ = (mutex_t *)*m;
     _spin_lite_lock(&mutex_global);
@@ -29,13 +30,26 @@ mutex_unref(volatile pthread_mutex_t *m, int r)
 /* Set the mutex to busy in a thread-safe way */
 /* A busy mutex can't be destroyed */
 static __attribute__((noinline)) int
-mutex_ref(volatile pthread_mutex_t *m )
+mutex_ref(pthread_mutex_t *m )
 {
     int r = 0;
 
-    INIT_MUTEX(m);
     _spin_lite_lock(&mutex_global);
-
+    if (!m || !*m)
+    {
+      _spin_lite_unlock(&mutex_global);
+      return EINVAL;
+    }
+    if (STATIC_INITIALIZER(*m))
+    {
+      r = mutex_static_init(m);
+      if (r != 0 && r != EBUSY)
+      {
+	_spin_lite_unlock(&mutex_global);
+	return r;
+      }
+    }
+    r = 0;
     if (!m || !*m || ((mutex_t *)*m)->valid != LIFE_MUTEX) r = EINVAL;
     else {
         ((mutex_t *)*m)->busy ++;
@@ -48,7 +62,7 @@ mutex_ref(volatile pthread_mutex_t *m )
 
 /* An unlock can simply fail with EPERM instead of auto-init (can't be owned) */
 static __attribute__((noinline)) int
-mutex_ref_unlock(volatile pthread_mutex_t *m)
+mutex_ref_unlock(pthread_mutex_t *m)
 {
     int r = 0;
     mutex_t *m_ = (mutex_t *)*m;
@@ -56,7 +70,7 @@ mutex_ref_unlock(volatile pthread_mutex_t *m)
     _spin_lite_lock(&mutex_global);
 
     if (!m || !*m || ((mutex_t *)*m)->valid != LIFE_MUTEX) r = EINVAL;
-    else if (STATIC_INITIALIZER(*m) && !COND_LOCKED(m_)) {
+    else if (STATIC_INITIALIZER(*m) || !COND_LOCKED(m_)) {
       r= EPERM;
     }
     else {
@@ -71,7 +85,7 @@ mutex_ref_unlock(volatile pthread_mutex_t *m)
 /* doesn't lock the mutex but set it to invalid in a thread-safe way */
 /* A busy mutex can't be destroyed -> EBUSY */
 static __attribute__((noinline)) int
-mutex_ref_destroy(volatile pthread_mutex_t *m, pthread_mutex_t *mDestroy )
+mutex_ref_destroy(pthread_mutex_t *m, pthread_mutex_t *mDestroy )
 {
     int r = 0;
 
@@ -95,7 +109,7 @@ mutex_ref_destroy(volatile pthread_mutex_t *m, pthread_mutex_t *mDestroy )
     return r;
 }
 
-static __attribute__((noinline)) int mutex_ref_init(volatile pthread_mutex_t *m )
+static __attribute__((noinline)) int mutex_ref_init(pthread_mutex_t *m )
 {
     int r = 0;
 
@@ -115,7 +129,7 @@ void mutex_print_set(int state)
     print_state = state;
 }
 
-void mutex_print(volatile pthread_mutex_t *m, char *txt)
+void mutex_print(pthread_mutex_t *m, char *txt)
 {
     if (!print_state) return;
     mutex_t *m_ = (mutex_t *)*m;
@@ -134,42 +148,32 @@ void mutex_print(volatile pthread_mutex_t *m, char *txt)
 #endif
 
 static __attribute__((noinline)) int
-mutex_static_init(volatile pthread_mutex_t *m )
+mutex_static_init(pthread_mutex_t *m)
 {
     static pthread_mutexattr_t mxattr_recursive = PTHREAD_MUTEX_RECURSIVE;
     static pthread_mutexattr_t mxattr_errorcheck = PTHREAD_MUTEX_ERRORCHECK;
-    pthread_mutex_t m_tmp=NULL;
-    mutex_t *mi, *m_replaced;
+
     int r;
 
-    if (!STATIC_INITIALIZER(mi = (mutex_t *)*m) ) {
+    _spin_lite_lock(&mutex_global_static);
+    if (!STATIC_INITIALIZER(*m)) {
         /* Assume someone crept in between: */
-        return 0;
+        r = 0;
     }
-
-    if (*m == PTHREAD_MUTEX_INITIALIZER)
-      r = pthread_mutex_init (&m_tmp, NULL);
-    else if (*m == PTHREAD_RECURSIVE_MUTEX_INITIALIZER)
-      r = pthread_mutex_init (&m_tmp, &mxattr_recursive);
-    else if (*m == PTHREAD_ERRORCHECK_MUTEX_INITIALIZER)
-      r = pthread_mutex_init (&m_tmp, &mxattr_errorcheck);
-    else if (*m == NULL)
-      r = EINVAL;
     else
-      r = pthread_mutex_init(&m_tmp, NULL);
-    if (!r) {
-        ((mutex_t *)m_tmp)->type = MUTEX_INITIALIZER2TYPE(mi);
-        m_replaced = (mutex_t *)InterlockedCompareExchangePointer(
-            (PVOID *)m, 
-            m_tmp,
-            mi);
-        if (m_replaced != mi) {
-            /* someone crept in between: */
-            pthread_mutex_destroy(&m_tmp);
-            /* But it could also be destroyed already: */
-            if (!m_replaced) r = EINVAL;
-        }
-    } else if (r == EBUSY && *m == NULL) r = 0;
+    {
+      if (*m == PTHREAD_MUTEX_INITIALIZER)
+	r = pthread_mutex_init (m, NULL);
+      else if (*m == PTHREAD_RECURSIVE_MUTEX_INITIALIZER)
+	r = pthread_mutex_init (m, &mxattr_recursive);
+      else if (*m == PTHREAD_ERRORCHECK_MUTEX_INITIALIZER)
+	r = pthread_mutex_init (m, &mxattr_errorcheck);
+      else if (*m == NULL)
+	r = EINVAL;
+      else
+	r = pthread_mutex_init(m, NULL);
+    }
+    _spin_lite_unlock(&mutex_global_static);
     return r;
 }
 
@@ -260,7 +264,7 @@ static int pthread_mutex_lock_intern(pthread_mutex_t *m, DWORD timeout)
 */
 static LONG LockDelta	= -4; /* Win 7 default */
 
-static inline int _InitWaitCriticalSection(volatile RTL_CRITICAL_SECTION *prc)
+static inline int _InitWaitCriticalSection(RTL_CRITICAL_SECTION *prc)
 {
     int r = 0;
     HANDLE evt;
@@ -293,7 +297,7 @@ static inline int _InitWaitCriticalSection(volatile RTL_CRITICAL_SECTION *prc)
 }
 
 /* the wait failed, so we have to restore the LockCount member */
-static inline void _UndoWaitCriticalSection(volatile RTL_CRITICAL_SECTION *prc)
+static inline void _UndoWaitCriticalSection(RTL_CRITICAL_SECTION *prc)
 {
         InterlockedExchangeAdd(&prc->LockCount, -LockDelta);
 }

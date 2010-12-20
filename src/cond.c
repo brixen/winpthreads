@@ -524,7 +524,7 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
 	/*We can only return EINVAL though it might not be posix compliant  */
 	r = EINVAL;
     }
-    if (r != EINVAL && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
+    if (r != 0 && r != EINVAL && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
       r = 0;
     return r;
   }
@@ -549,7 +549,7 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
       if (r != 0 && __pthread_shallcancel ())
 	return EINVAL;
     } while (r == ETIMEDOUT);
-    if (r != EINVAL && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
+    if (r != 0 && r != EINVAL && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
       r = 0;
     return r;
   }
@@ -575,7 +575,7 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
     if (timeout != 0 && r != 0 && __pthread_shallcancel ())
       return EINVAL;
   } while (r == ETIMEDOUT && timeout != 0);
-  if (r == ETIMEDOUT && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
+  if (r != 0 && r == ETIMEDOUT && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
     r = 0;
   return r;
 }

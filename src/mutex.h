@@ -29,16 +29,8 @@
 #define COND_DEADLK_NR(m)	((m->type != PTHREAD_MUTEX_RECURSIVE) && COND_DEADLK(m))
 #define CHECK_DEADLK(m)		{ if (COND_DEADLK_NR(m)) return EDEADLK; }
 
-#define STATIC_INITIALIZER(x)		((pthread_mutex_t)(x) >= ((pthread_mutex_t)PTHREAD_RECURSIVE_MUTEX_INITIALIZER))
+#define STATIC_INITIALIZER(x)		((intptr_t)(x) >= -3 && (intptr_t)(x) <= -1)
 #define MUTEX_INITIALIZER2TYPE(x)	((LONGBAG)PTHREAD_NORMAL_MUTEX_INITIALIZER - (LONGBAG)(x))
-
-#define CHECK_MUTEX(m)  { \
-    if (!(m) || !*m || (STATIC_INITIALIZER(*m)) \
-        || ( ((mutex_t *)(*m))->valid != (unsigned int)LIFE_MUTEX ) ) \
-        return EINVAL; }
-
-#define INIT_MUTEX(m)  { int r; \
-    if (STATIC_INITIALIZER(*m)) { if ((r = mutex_static_init(m))) return r; }}
 
 #define LIFE_MUTEX 0xBAB1F00D
 #define DEAD_MUTEX 0xDEADBEEF
