@@ -213,7 +213,7 @@ static int pthread_mutex_lock_intern(pthread_mutex_t *m, DWORD timeout)
       if (COND_OWNER(_m))
       {
 	do {
-	  Sleep(0);
+	  Sleep(0); /* waiter that owner gets released.  */
 	} while (COND_OWNER(_m));
       }
 #endif
@@ -340,7 +340,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
             return ETIMEDOUT;
         }
         if ((i & 1) == 0)
-          Sleep(0);
+          Sleep(0);  /* waiter that owner gets released.  */
         /* Try to grab lock */
 	r = pthread_mutex_trylock(m);
 	if (r != EBUSY) break;

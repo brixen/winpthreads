@@ -562,11 +562,6 @@ pthread_t pthread_self(void)
     }
     if (!t)
       return ret;
-    while (t->h == INVALID_HANDLE_VALUE)
-    {
-        YieldProcessor();
-        _ReadWriteBarrier();
-    }
     ret = t->hlp;
 
     return ret;
@@ -656,14 +651,6 @@ int pthread_cancel(pthread_t t)
 
     if (t.p == NULL) return ESRCH;
     CHECK_OBJECT(tv, ESRCH);
-    if (tv && tv->h == INVALID_HANDLE_VALUE)
-    {
-      while (tv->h == INVALID_HANDLE_VALUE)
-      {
-	  YieldProcessor();
-	  _ReadWriteBarrier();
-      }
-    }
     /*if (tv->ended) return ESRCH;*/
     if (pthread_equal(pthread_self(), t))
     {
@@ -861,12 +848,6 @@ int pthread_create_wrapper(void *args)
 
     TlsSetValue(_pthread_tls, tv);
     tv->tid = GetCurrentThreadId();
-    /* If we exit too early, then we can race with create */
-    while (tv->h == INVALID_HANDLE_VALUE)
-    {
-        YieldProcessor();
-        _ReadWriteBarrier();
-    }
 
     if (!setjmp(tv->jb))
     {
@@ -980,8 +961,6 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     {
       tv->h = thrd;
       ResumeThread(thrd);
-     // while (tv->evStart == INVALID_HANDLE_VALUE)
-     //   Sleep(0);
     }
     return 0;
 }
@@ -1015,14 +994,6 @@ int _pthread_tryjoin(pthread_t t, void **res)
     DWORD dwFlags;
     struct _pthread_v *tv = t.p;
  
-    if (tv && tv->h == INVALID_HANDLE_VALUE)
-    {
-      while (tv->h == INVALID_HANDLE_VALUE)
-      {
-	  YieldProcessor();
-	  _ReadWriteBarrier();
-      }
-    }
     if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
       return ESRCH;
 
@@ -1059,14 +1030,6 @@ int pthread_detach(pthread_t t)
     * our call would be undefined if called on a dead thread.
     */
 
-    if (tv && tv->h == INVALID_HANDLE_VALUE)
-    {
-      while (tv->h == INVALID_HANDLE_VALUE)
-      {
-	  YieldProcessor();
-	  _ReadWriteBarrier();
-      }
-    }
     if (!tv || tv->h == NULL || !GetHandleInformation(tv->h, &dwFlags))
       return ESRCH;
     if ((tv->p_state & PTHREAD_CREATE_DETACHED) != 0)
