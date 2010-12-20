@@ -26,22 +26,6 @@ mutex_unref(volatile pthread_mutex_t *m, int r)
     return r;
 }
 
-/* External: must be called by owner of a locked mutex: */
-static __attribute__((noinline)) int
-mutex_ref_ext(volatile pthread_mutex_t *m)
-{
-    int r = 0;
-    mutex_t *m_ = (mutex_t *)*m;
-    _spin_lite_lock(&mutex_global);
-
-    if (!m || !*m ) r = EINVAL;
-    else if (STATIC_INITIALIZER(m) || !COND_OWNER(m_)) r = EPERM;
-    else m_->busy ++;
-
-    _spin_lite_unlock(&mutex_global);
-    return r;
-}
-
 /* Set the mutex to busy in a thread-safe way */
 /* A busy mutex can't be destroyed */
 static __attribute__((noinline)) int
@@ -317,7 +301,10 @@ static inline void _UndoWaitCriticalSection(volatile RTL_CRITICAL_SECTION *prc)
 int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 {
     unsigned long long t, ct;
-    int i = 0, r;
+#ifndef USE_MUTEX_Mutex
+    int i = 0;
+#endif
+    int r;
 
     if (!ts) return pthread_mutex_lock(m);
     r = mutex_ref(m);
