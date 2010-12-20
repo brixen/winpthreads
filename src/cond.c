@@ -14,10 +14,10 @@
 
 int __pthread_shallcancel (void);
 
-int do_sema_b_wait (HANDLE sema, int nointerrupt, DWORD timeout,CRITICAL_SECTION *cs, LONG *val);
-int do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout);
+static int do_sema_b_wait (HANDLE sema, int nointerrupt, DWORD timeout,CRITICAL_SECTION *cs, LONG *val);
+static int do_sema_b_release(HANDLE sema, LONG count,CRITICAL_SECTION *cs, LONG *val);
 
-int do_sema_b_release(HANDLE sema, LONG count,CRITICAL_SECTION *cs, LONG *val);
+int do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout);
 
 #ifdef WINPTHREAD_DBG
 static int print_state = 0;
@@ -484,7 +484,7 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     return r;
 }
 
-int
+static int
 do_sema_b_wait (HANDLE sema, int nointerrupt, DWORD timeout,CRITICAL_SECTION *cs, LONG *val)
 {
   int r;
@@ -580,7 +580,8 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
   return r;
 }
 
-int do_sema_b_release(HANDLE sema, LONG count,CRITICAL_SECTION *cs, LONG *val)
+static int
+do_sema_b_release(HANDLE sema, LONG count,CRITICAL_SECTION *cs, LONG *val)
 {
   int wc;
   EnterCriticalSection(cs);
