@@ -506,6 +506,8 @@ do_sema_b_wait (HANDLE sema, int nointerrupt, DWORD timeout,CRITICAL_SECTION *cs
 int
 do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
 {
+  HANDLE arr[2];
+  DWORD maxH = 1;
   int r = 0;
   DWORD res, dt;
   if (nointerrupt)
@@ -527,6 +529,35 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
     if (r != 0 && r != EINVAL && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
       r = 0;
     return r;
+  }
+  arr[0] = sema;
+  arr[1] = pthread_self().p->evStart;
+  if (arr[1] != NULL) maxH += 1;
+  if (maxH == 2)
+  {
+      res = WaitForMultipleObjects(maxH, arr, 0, timeout);
+      switch (res) {
+      case WAIT_TIMEOUT:
+	  r = ETIMEDOUT;
+	  break;
+      case (WAIT_OBJECT_0 + 1):
+          ResetEvent(arr[1]);
+          return EINVAL;
+      case WAIT_ABANDONED:
+	  r = EPERM;
+	  break;
+      case WAIT_OBJECT_0:
+          r = 0;
+	  break;
+      default:
+	  /*We can only return EINVAL though it might not be posix compliant  */
+	  r = EINVAL;
+      }
+      if (r != 0 && r != EINVAL && WaitForSingleObject(arr[0], 0) == WAIT_OBJECT_0)
+	r = 0;
+      if (r != 0 && __pthread_shallcancel ())
+	return EINVAL;
+      return r;
   }
   if (timeout == INFINITE)
   {

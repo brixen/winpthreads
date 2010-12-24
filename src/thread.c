@@ -33,7 +33,6 @@ static void push_pthread_mem(_pthread_v *sv)
   else
     pthr_last->next = sv;
   sv->hlp.x = sv->x = x;
-  sv->hlp.p = sv;
   _spin_lite_unlock(&spin_pthr_locked);
 }
 
@@ -54,6 +53,7 @@ static _pthread_v *pop_pthread_mem(void)
     pthr_last = NULL;
   _spin_lite_unlock(&spin_pthr_locked);
   r->next = NULL;
+  r->hlp.p = r;
   return r;
 }
 
@@ -91,14 +91,21 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
       if (t->h != NULL)
       {
         CloseHandle(t->h);
+	if (t->evStart)
+	  CloseHandle(t->evStart);
+	t->evStart = NULL;
         t->h = NULL;
       }
+      pthread_mutex_destroy(&t->p_clock);
       push_pthread_mem(t);
       t = NULL;
       TlsSetValue(_pthread_tls, t);
     }
     else if (t && t->ended == 0)
     {
+      if (t->evStart)
+	CloseHandle(t->evStart);
+      t->evStart = NULL;
       t->ended = 1;
       _pthread_cleanup_dest(t->hlp);
       if ((t->p_state & PTHREAD_CREATE_DETACHED) == PTHREAD_CREATE_DETACHED)
@@ -111,6 +118,14 @@ __dyn_tls_pthread (HANDLE hDllHandle, DWORD dwReason, LPVOID lpreserved)
 	t = NULL;
 	TlsSetValue(_pthread_tls, t);
       }
+      pthread_mutex_destroy(&t->p_clock);
+    }
+    else if (t)
+    {
+      if (t->evStart)
+	CloseHandle(t->evStart);
+      t->evStart = NULL;
+      pthread_mutex_destroy(&t->p_clock);
     }
   }
   return TRUE;
@@ -242,9 +257,26 @@ void *pthread_timechange_handler_np(void * dummy)
 
 int pthread_delay_np (const struct timespec *interval)
 {
+  DWORD to = (!interval ? 0 : dwMilliSecs(_pthread_time_in_ms_from_timespec(interval)));
+  pthread_t s = pthread_self();
+  if(!to)
+  {
     pthread_testcancel();
-    Sleep(dwMilliSecs(_pthread_time_in_ms_from_timespec(interval)));
+    Sleep(0);
+    pthread_testcancel();
     return 0;
+  }
+  pthread_testcancel();
+  if (s.p->evStart)
+  {
+    WaitForSingleObject(s.p->evStart, to);
+  }
+  else
+  {
+    Sleep(to);
+  }
+  pthread_testcancel();
+  return 0;
 }
 
 int pthread_num_processors_np(void) 
@@ -517,6 +549,8 @@ pthread_t pthread_self(void)
 
         t->p_state = PTHREAD_DEFAULT_ATTR /*| PTHREAD_CREATE_DETACHED*/;
         t->tid = GetCurrentThreadId();
+        t->evStart = CreateEvent (NULL, 1, 0, NULL);
+        t->p_clock = PTHREAD_MUTEX_INITIALIZER;
         t->sched_pol = SCHED_OTHER;
         t->h = NULL; //GetCurrentThread();
 	if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &t->h, 0, FALSE, DUPLICATE_SAME_ACCESS))
@@ -537,6 +571,9 @@ pthread_t pthread_self(void)
 	  {
 	    if (!t->h) {
 		t->valid = DEAD_THREAD;
+		if (t->evStart)
+		  CloseHandle(t->evStart);
+		t->evStart = NULL;
 		rslt = (unsigned) (size_t) t->ret_arg;
 		push_pthread_mem(t);
 		t = NULL;
@@ -545,6 +582,9 @@ pthread_t pthread_self(void)
 	    {
 	      rslt = (unsigned) (size_t) t->ret_arg;
 	      t->ended = 1;
+	      if (t->evStart)
+		CloseHandle(t->evStart);
+	      t->evStart = NULL;
 	      if ((t->p_state & PTHREAD_CREATE_DETACHED) == PTHREAD_CREATE_DETACHED)
 	      {
 		t->valid = DEAD_THREAD;
@@ -594,19 +634,20 @@ int pthread_exit(void *res)
 
 void _pthread_invoke_cancel(void)
 {
-    pthread_self().p->in_cancel = 1;
-    _pthread_cleanup *pcup;
-    _pthread_setnobreak (1);
-    InterlockedDecrement(&_pthread_cancelling);
+  pthread_t se = pthread_self();
+  se.p->in_cancel = 1;
+  _pthread_cleanup *pcup;
+  _pthread_setnobreak (1);
+  InterlockedDecrement(&_pthread_cancelling);
 
-    /* Call cancel queue */
-    for (pcup = pthread_self().p->clean; pcup; pcup = pcup->next)
-    {
-        pcup->func((pthread_once_t *)pcup->arg);
-    }
+  /* Call cancel queue */
+  for (pcup = pthread_self().p->clean; pcup; pcup = pcup->next)
+  {
+      pcup->func((pthread_once_t *)pcup->arg);
+  }
 
-    _pthread_setnobreak (0);
-    pthread_exit(PTHREAD_CANCELED);
+  _pthread_setnobreak (0);
+  pthread_exit(PTHREAD_CANCELED);
 }
 
 int  __pthread_shallcancel(void)
@@ -633,15 +674,20 @@ void _pthread_setnobreak(int v)
 
 void pthread_testcancel(void)
 {
-    if (_pthread_cancelling)
-    {
-        pthread_t t = pthread_self();
-
-        if (t.p != NULL && t.p->cancelled && (t.p->p_state & PTHREAD_CANCEL_ENABLE) && t.p->nobreak <= 0)
-        {
-            _pthread_invoke_cancel();
-        }
-    }
+  pthread_t self = pthread_self();
+  if (!self.p)
+    return;
+  if (!_pthread_cancelling)
+    return;
+  pthread_mutex_lock(&self.p->p_clock);
+  if (self.p->cancelled && (self.p->p_state & PTHREAD_CANCEL_ENABLE) && self.p->nobreak <= 0)
+  {
+    self.p->p_state &= ~PTHREAD_CANCEL_ENABLE;
+    ResetEvent(self.p->evStart);
+    pthread_mutex_unlock(&self.p->p_clock);
+    _pthread_invoke_cancel();
+  }
+  pthread_mutex_unlock(&self.p->p_clock);
 }
 
 
@@ -652,17 +698,21 @@ int pthread_cancel(pthread_t t)
     if (t.p == NULL) return ESRCH;
     CHECK_OBJECT(tv, ESRCH);
     /*if (tv->ended) return ESRCH;*/
+    pthread_mutex_lock(&t.p->p_clock);
     if (pthread_equal(pthread_self(), t))
     {
       if(tv->cancelled) return (tv->in_cancel ? ESRCH : 0);
       tv->cancelled = 1;
       InterlockedIncrement(&_pthread_cancelling);
+      if(tv->evStart) SetEvent(tv->evStart);
       if ((tv->p_state & PTHREAD_CANCEL_ASYNCHRONOUS) != 0 && (tv->p_state & PTHREAD_CANCEL_ENABLE) != 0)
       {
         tv->p_state &= ~PTHREAD_CANCEL_ENABLE;
         tv->in_cancel = 1;
+        pthread_mutex_unlock(&t.p->p_clock);
         _pthread_invoke_cancel();
       }
+      pthread_mutex_unlock(&t.p->p_clock);
       return 0;
     }
 
@@ -694,6 +744,8 @@ int pthread_cancel(pthread_t t)
 
 	  /* Notify everyone to look */
 	  InterlockedIncrement(&_pthread_cancelling);
+	  if(tv->evStart) SetEvent(tv->evStart);
+	  pthread_mutex_unlock(&t.p->p_clock);
 
 	  ResumeThread(tv->h);
         }
@@ -707,10 +759,15 @@ int pthread_cancel(pthread_t t)
 
         /* Notify everyone to look */
         InterlockedIncrement(&_pthread_cancelling);
+        if(tv->evStart) SetEvent(tv->evStart);
       }
-      else return (tv->in_cancel ? ESRCH : 0);
+      else
+      {
+	pthread_mutex_unlock(&t.p->p_clock);
+	return (tv->in_cancel ? ESRCH : 0);
+      }
     }
-
+    pthread_mutex_unlock(&t.p->p_clock);
     return 0;
 }
 
@@ -729,7 +786,7 @@ int pthread_kill(pthread_t t, int sig)
 
 unsigned _pthread_get_state(pthread_attr_t *attr, unsigned flag)
 {
-    return attr->p_state & flag;
+    return (attr->p_state & flag);
 }
 
 int _pthread_set_state(pthread_attr_t *attr, unsigned flag, unsigned val)
@@ -743,15 +800,17 @@ int _pthread_set_state(pthread_attr_t *attr, unsigned flag, unsigned val)
 
 int pthread_attr_init(pthread_attr_t *attr)
 {
-    attr->p_state = PTHREAD_DEFAULT_ATTR;
-    attr->stack = NULL;
-    attr->s_size = 0;
-    return 0;
+  memset (attr, 0, sizeof (pthread_attr_t));
+  attr->p_state = PTHREAD_DEFAULT_ATTR;
+  attr->stack = NULL;
+  attr->s_size = 0;
+  return 0;
 }
 
 int pthread_attr_destroy(pthread_attr_t *attr)
 {
     /* No need to do anything */
+    memset (attr, 0, sizeof(pthread_attr_t));
     return 0;
 }
 
@@ -768,7 +827,9 @@ int pthread_attr_getdetachstate(pthread_attr_t *a, int *flag)
 
 int pthread_attr_setinheritsched(pthread_attr_t *a, int flag)
 {
-    return _pthread_set_state(a, PTHREAD_INHERIT_SCHED, flag);
+  if (!a || (flag != PTHREAD_INHERIT_SCHED && flag != PTHREAD_EXPLICIT_SCHED))
+    return EINVAL;
+  return _pthread_set_state(a, PTHREAD_INHERIT_SCHED, flag);
 }
 
 int pthread_attr_getinheritsched(pthread_attr_t *a, int *flag)
@@ -812,15 +873,30 @@ int pthread_attr_setstacksize(pthread_attr_t *attr, size_t size)
     return 0;
 }
 
+static void test_cancel_locked (pthread_t t)
+{
+  if (t.p->in_cancel || t.p->ended != 0 || (t.p->p_state & PTHREAD_CANCEL_ENABLE) == 0)
+    return;
+  if ((t.p->p_state & PTHREAD_CANCEL_ASYNCHRONOUS) == 0)
+    return;
+  if (WaitForSingleObject(t.p->evStart, 0) != WAIT_OBJECT_0)
+    return;
+  pthread_mutex_unlock(&t.p->p_clock);
+  _pthread_invoke_cancel();
+}
+
 int pthread_setcancelstate(int state, int *oldstate)
 {
     pthread_t t = pthread_self();
     if (t.p == NULL) return EINVAL;
 
     if ((state & PTHREAD_CANCEL_ENABLE) != state) return EINVAL;
+    pthread_mutex_lock (&t.p->p_clock);
     if (oldstate) *oldstate = t.p->p_state & PTHREAD_CANCEL_ENABLE;
     t.p->p_state &= ~PTHREAD_CANCEL_ENABLE;
     t.p->p_state |= state;
+    test_cancel_locked(t);
+    pthread_mutex_unlock(&t.p->p_clock);
 
     return 0;
 }
@@ -832,9 +908,12 @@ int pthread_setcanceltype(int type, int *oldtype)
     if (t.p == NULL)
       return EINVAL;
     if ((type & PTHREAD_CANCEL_ASYNCHRONOUS) != type) return EINVAL;
+    pthread_mutex_lock(&t.p->p_clock);
     if (oldtype) *oldtype = t.p->p_state & PTHREAD_CANCEL_ASYNCHRONOUS;
     t.p->p_state &= ~PTHREAD_CANCEL_ASYNCHRONOUS;
     t.p->p_state |= type;
+    test_cancel_locked(t);
+    pthread_mutex_unlock(&t.p->p_clock);
 
     return 0;
 }
@@ -844,15 +923,16 @@ int pthread_create_wrapper(void *args)
     unsigned rslt = 0;
     struct _pthread_v *tv = (struct _pthread_v *)args;
 
+    pthread_mutex_lock(&tv->p_clock);
     _pthread_once_raw(&_pthread_tls_once, pthread_tls_init);
-
     TlsSetValue(_pthread_tls, tv);
     tv->tid = GetCurrentThreadId();
+    pthread_mutex_unlock(&tv->p_clock);
+
 
     if (!setjmp(tv->jb))
     {
       intptr_t trslt = (intptr_t) 128;
-      tv->evStart=NULL;
       /* Provide to this thread a default exception handler.  */
       #ifdef __SEH__
 	asm ("\t.tl_start:\n"
@@ -871,17 +951,26 @@ int pthread_create_wrapper(void *args)
       /* Clean up destructors */
       _pthread_cleanup_dest(tv->hlp);
     }
-
+    pthread_mutex_lock(&tv->p_clock);
     rslt = (unsigned) (size_t) tv->ret_arg;
     /* Make sure we free ourselves if we are detached */
+    if (tv->evStart)
+      CloseHandle(tv->evStart);
+    tv->evStart = NULL;
     if (!tv->h) {
         tv->valid = DEAD_THREAD;
+        pthread_mutex_unlock(&tv->p_clock);
+        pthread_mutex_destroy(&tv->p_clock);
         push_pthread_mem(tv);
         tv = NULL;
         TlsSetValue(_pthread_tls, tv);
     }
     else
+    {
       tv->ended = 1;
+      pthread_mutex_unlock(&tv->p_clock);
+      pthread_mutex_destroy(&tv->p_clock);
+    }
 
     _endthreadex(rslt);
     return rslt;
@@ -906,22 +995,33 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     tv->func = func;
     tv->p_state = PTHREAD_DEFAULT_ATTR;
     tv->h = INVALID_HANDLE_VALUE;
-    tv->evStart = INVALID_HANDLE_VALUE;
+    tv->evStart = CreateEvent (NULL, 1, 0, NULL);
+    tv->p_clock = PTHREAD_MUTEX_INITIALIZER;
+    //tv->tmpEv = CreateEvent (NULL, 1, 0, NULL);
     tv->valid = LIFE_THREAD;
     tv->sched.sched_priority = THREAD_PRIORITY_NORMAL;
     tv->sched_pol = SCHED_OTHER;
+    if (tv->evStart == NULL)
+    {
+      if (tv->evStart)
+        CloseHandle(tv->evStart);
+      if (th) memset(th,0, sizeof(pthread_t));
+      push_pthread_mem(tv);
+      return EAGAIN;
+    }
  
     if (attr)
     {
         int inh = 0;
         tv->p_state = attr->p_state;
-        tv->sched.sched_priority = attr->param.sched_priority;
         ssize = attr->s_size;
         pthread_attr_getinheritsched (attr, &inh);
         if (inh)
         {
           tv->sched.sched_priority = pthread_self().p->sched.sched_priority;
 	}
+	else
+	  tv->sched.sched_priority = attr->param.sched_priority;
     }
 
     /* Make sure tv->h has value of INVALID_HANDLE_VALUE */
@@ -931,7 +1031,16 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
     if (thrd == INVALID_HANDLE_VALUE)
       thrd = 0;
     /* Failed */
-    if (thrd)
+    if (!thrd)
+    {
+      if (tv->evStart)
+        CloseHandle(tv->evStart);
+      pthread_mutex_destroy(&tv->p_clock);
+      tv->evStart = NULL;
+      if (th) memset(th,0, sizeof(pthread_t));
+      push_pthread_mem(tv);
+      return EAGAIN;
+    }
     {
       int pr = tv->sched.sched_priority;
       if (pr <= THREAD_PRIORITY_IDLE) {
@@ -945,12 +1054,7 @@ int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), 
       }
       SetThreadPriority(thrd, pr);
     }
-    if (!thrd)
-    {
-      memset(th,0, sizeof(pthread_t));
-      push_pthread_mem(tv);
-      return EAGAIN;
-    }
+    ResetEvent(tv->evStart);
     if (tv->p_state & PTHREAD_CREATE_DETACHED)
     {
       tv->h = 0;
@@ -980,10 +1084,12 @@ int pthread_join(pthread_t t, void **res)
     if (tv->ended == 0)
     WaitForSingleObject(tv->h, INFINITE);
     CloseHandle(tv->h);
-
+    if (tv->evStart)
+      CloseHandle(tv->evStart);
+    tv->evStart = NULL;
     /* Obtain return value */
     if (res) *res = tv->ret_arg;
-
+    pthread_mutex_destroy(&tv->p_clock);
     push_pthread_mem(tv);
 
     return 0;
@@ -1009,9 +1115,13 @@ int _pthread_tryjoin(pthread_t t, void **res)
         return EBUSY;
     }
     CloseHandle(tv->h);
+    if (tv->evStart)
+      CloseHandle(tv->evStart);
+    tv->evStart = NULL;
 
     /* Obtain return value */
     if (res) *res = tv->ret_arg;
+    pthread_mutex_destroy(&tv->p_clock);
 
     push_pthread_mem(tv);
 
@@ -1046,6 +1156,10 @@ int pthread_detach(pthread_t t)
       CloseHandle(dw);
       if (tv->ended)
       {
+	if (tv->evStart)
+	  CloseHandle(tv->evStart);
+	tv->evStart = NULL;
+	pthread_mutex_destroy(&tv->p_clock);
         push_pthread_mem(tv);
       }
     }

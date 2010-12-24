@@ -8,6 +8,8 @@
 #include "mutex.h"
 #include "ref.h"
 
+int do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout);
+
 static int sem_result(int res)
 {
   if (res != 0) {
@@ -126,26 +128,9 @@ int sem_wait(sem_t *sem)
   {
     return 0;
   }
-  do {
-    dwr = WaitForSingleObject(sv->s, 20);
-    switch (dwr)
-    {
-    case WAIT_TIMEOUT:
-      cur_v = ETIMEDOUT;
-      if (__pthread_shallcancel ())
-        cur_v = EINVAL;
-      break;
-    case WAIT_ABANDONED:
-	cur_v = EINTR;
-	break;
-    case WAIT_OBJECT_0:
-	return 0;
-    default:
-	/*We can only return EINVAL though it might not be posix compliant  */
-	cur_v = EINVAL;
-    }
-  } while (cur_v == ETIMEDOUT);
-  
+  cur_v = do_sema_b_wait_intern (sv->s, 0, INFINITE);
+  if (!cur_v)
+    return 0;
   if (*sem != NULL && pthread_mutex_lock(&sv->vlock) == 0)
   {
     if (WaitForSingleObject(sv->s, 0) != WAIT_OBJECT_0)
@@ -177,23 +162,10 @@ int sem_timedwait(sem_t *sem, const struct timespec *t)
 
   if (cur_v >= 0)
     return 0;
-  dwr = WaitForSingleObject(sv->s, dwr);
-  switch (dwr)
-  {
-  case WAIT_TIMEOUT:
-      cur_v = ETIMEDOUT;
-      if (__pthread_shallcancel ())
-        cur_v = EINVAL;
-      break;
-  case WAIT_ABANDONED:
-      cur_v = EINTR;
-      break;
-  case WAIT_OBJECT_0:
-      return 0;
-  default:
-      /*We can only return EINVAL though it might not be posix compliant  */
-      cur_v = EINVAL;
-  }
+  cur_v = do_sema_b_wait_intern (sv->s, 0, dwr);
+  if (!cur_v)
+    return 0;
+
   if (*sem != NULL && pthread_mutex_lock(&sv->vlock) == 0)
   {
     if (WaitForSingleObject(sv->s, 0) != WAIT_OBJECT_0)
