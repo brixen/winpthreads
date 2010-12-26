@@ -128,7 +128,7 @@ int sem_wait(sem_t *sem)
   {
     return 0;
   }
-  cur_v = do_sema_b_wait_intern (sv->s, 0, INFINITE);
+  cur_v = do_sema_b_wait_intern (sv->s, 2, INFINITE);
   if (!cur_v)
     return 0;
   if (*sem != NULL && pthread_mutex_lock(&sv->vlock) == 0)
@@ -162,7 +162,7 @@ int sem_timedwait(sem_t *sem, const struct timespec *t)
 
   if (cur_v >= 0)
     return 0;
-  cur_v = do_sema_b_wait_intern (sv->s, 0, dwr);
+  cur_v = do_sema_b_wait_intern (sv->s, 2, dwr);
   if (!cur_v)
     return 0;
 

@@ -16,6 +16,13 @@ int __pthread_shallcancel (void);
 
 static int do_sema_b_wait (HANDLE sema, int nointerrupt, DWORD timeout,CRITICAL_SECTION *cs, LONG *val);
 static int do_sema_b_release(HANDLE sema, LONG count,CRITICAL_SECTION *cs, LONG *val);
+static void cleanup_wait(void *arg);
+
+typedef struct sCondWaitHelper {
+    cond_t *c;
+    pthread_mutex_t *external_mutex;
+    int *r;
+} sCondWaitHelper;
 
 int do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout);
 
@@ -324,8 +331,9 @@ int pthread_cond_broadcast (pthread_cond_t *c)
 
 int pthread_cond_wait (pthread_cond_t *c, pthread_mutex_t *external_mutex)
 {
+    sCondWaitHelper ch;
     cond_t *_c;
-    int r, r2, n;
+    int r;
 
     pthread_testcancel();
 
@@ -351,62 +359,24 @@ int pthread_cond_wait (pthread_cond_t *c, pthread_mutex_t *external_mutex)
     if (r != 0)
       return r;
 
+    ch.c = _c;
+    ch.r = &r;
+    ch.external_mutex = external_mutex;
+    
+    pthread_cleanup_push(cleanup_wait, (void *) &ch);
     r = pthread_mutex_unlock(external_mutex);
     if (!r)
       r = do_sema_b_wait (_c->sema_q, 0, INFINITE,&_c->waiters_q_lock_,&_c->value_q);
-    _pthread_setnobreak(1);
-    EnterCriticalSection (&_c->waiters_count_lock_);
-    n = _c->waiters_count_unblock_;
-    if (n != 0)
-      _c->waiters_count_unblock_ -= 1;
-    else if ((INT_MAX/2) - 1 == _c->waiters_count_gone_)
-    {
-      _c->waiters_count_gone_ += 1;
-      r2 = do_sema_b_wait (_c->sema_b, 1, INFINITE,&_c->waiters_b_lock_,&_c->value_b);
-      if (r2 != 0)
-      {
-        LeaveCriticalSection(&_c->waiters_count_lock_);
-        _pthread_setnobreak(0);
-        pthread_testcancel();
-        return r2;
-      }
-      _c->waiters_count_ -= _c->waiters_count_gone_;
-      r2 = do_sema_b_release (_c->sema_b, 1,&_c->waiters_b_lock_,&_c->value_b);
-      if (r2 != 0)
-      {
-        LeaveCriticalSection(&_c->waiters_count_lock_);
-        _pthread_setnobreak(0);
-        pthread_testcancel();
-	return r2;
-      }
-      _c->waiters_count_gone_ = 0;
-    }
-    else
-      _c->waiters_count_gone_ += 1;
-    LeaveCriticalSection (&_c->waiters_count_lock_);
-     
-    if (n == 1)
-    {
-      r2 = do_sema_b_release (_c->sema_b, 1,&_c->waiters_b_lock_,&_c->value_b);
-      if (r2 != 0)
-      {
-	_pthread_setnobreak(0);
-	pthread_testcancel();
-	return r2;
-      }
-    }
-    r2 = pthread_mutex_lock(external_mutex);
-    _pthread_setnobreak(0);
-    pthread_testcancel();
-    if (r2 != 0)
-      r = r2;
+
+    pthread_cleanup_pop(1);
     return r;
 }
 
 int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, struct timespec *t)
 {
+    sCondWaitHelper ch;
     DWORD dwr;
-    int r, n, r2;
+    int r;
     cond_t *_c;
 
     pthread_testcancel();
@@ -432,56 +402,67 @@ int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *external_mutex, s
     if (r != 0)
       return r;
 
+    ch.c = _c;
+    ch.r = &r;
+    ch.external_mutex = external_mutex;
+    
+    pthread_cleanup_push(cleanup_wait, (void *) &ch);
+
     r = pthread_mutex_unlock(external_mutex);
     if (!r)
       r = do_sema_b_wait (_c->sema_q, 0, dwr,&_c->waiters_q_lock_,&_c->value_q);
-    _pthread_setnobreak(1);
-    EnterCriticalSection (&_c->waiters_count_lock_);
-    n = _c->waiters_count_unblock_;
-    if (n != 0)
-      _c->waiters_count_unblock_ -= 1;
-    else if ((INT_MAX/2) - 1 == _c->waiters_count_gone_)
-    {
-      _c->waiters_count_gone_ += 1;
-      r2 = do_sema_b_wait (_c->sema_b, 1, INFINITE,&_c->waiters_b_lock_,&_c->value_b);
-      if (r2 != 0)
-      {
-        LeaveCriticalSection(&_c->waiters_count_lock_);
-        _pthread_setnobreak(0);
-        pthread_testcancel();
-        return r2;
-      }
-      _c->waiters_count_ -= _c->waiters_count_gone_;
-      r2 = do_sema_b_release (_c->sema_b, 1,&_c->waiters_b_lock_,&_c->value_b);
-      if (r2 != 0)
-      {
-        LeaveCriticalSection(&_c->waiters_count_lock_);
-        _pthread_setnobreak(0);
-        pthread_testcancel();
-	return r2;
-      }
-      _c->waiters_count_gone_ = 0;
-    }
-    else
-      _c->waiters_count_gone_ += 1;
-    LeaveCriticalSection (&_c->waiters_count_lock_);
-     
-    if (n == 1)
-    {
-      r2 = do_sema_b_release (_c->sema_b, 1,&_c->waiters_b_lock_,&_c->value_b);
-      if (r2 != 0)
-      {
-	_pthread_setnobreak(0);
-	pthread_testcancel();
-	return r2;
-      }
-    }
-    r2 = pthread_mutex_lock(external_mutex);
-    _pthread_setnobreak(0);
-    pthread_testcancel();
-    if (r2 != 0)
-      r = r2;
+
+    pthread_cleanup_pop(1);
     return r;
+}
+
+static void cleanup_wait(void *arg)
+{
+  int n, r;
+  sCondWaitHelper *ch = (sCondWaitHelper *) arg;
+  cond_t *_c;
+
+  _c = ch->c;
+  EnterCriticalSection (&_c->waiters_count_lock_);
+  n = _c->waiters_count_unblock_;
+  if (n != 0)
+    _c->waiters_count_unblock_ -= 1;
+  else if ((INT_MAX/2) - 1 == _c->waiters_count_gone_)
+  {
+    _c->waiters_count_gone_ += 1;
+    r = do_sema_b_wait (_c->sema_b, 1, INFINITE,&_c->waiters_b_lock_,&_c->value_b);
+    if (r != 0)
+    {
+      LeaveCriticalSection(&_c->waiters_count_lock_);
+      ch->r[0] = r;
+      return;
+    }
+    _c->waiters_count_ -= _c->waiters_count_gone_;
+    r = do_sema_b_release (_c->sema_b, 1,&_c->waiters_b_lock_,&_c->value_b);
+    if (r != 0)
+    {
+      LeaveCriticalSection(&_c->waiters_count_lock_);
+      ch->r[0] = r;
+      return;
+    }
+    _c->waiters_count_gone_ = 0;
+  }
+  else
+    _c->waiters_count_gone_ += 1;
+  LeaveCriticalSection (&_c->waiters_count_lock_);
+
+  if (n == 1)
+  {
+    r = do_sema_b_release (_c->sema_b, 1,&_c->waiters_b_lock_,&_c->value_b);
+    if (r != 0)
+    {
+      ch->r[0] = r;
+      return;
+    }
+  }
+  r = pthread_mutex_lock(ch->external_mutex);
+  if (r != 0)
+    ch->r[0] = r;
 }
 
 static int
@@ -510,7 +491,7 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
   DWORD maxH = 1;
   int r = 0;
   DWORD res, dt;
-  if (nointerrupt)
+  if (nointerrupt == 1)
   {
     res = WaitForSingleObject(sema, timeout);
     switch (res) {
@@ -542,6 +523,8 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
 	  break;
       case (WAIT_OBJECT_0 + 1):
           ResetEvent(arr[1]);
+          if (nointerrupt != 2)
+            pthread_testcancel();
           return EINVAL;
       case WAIT_ABANDONED:
 	  r = EPERM;
@@ -578,7 +561,11 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
 	  r = EINVAL;
       }
       if (r != 0 && __pthread_shallcancel ())
+      {
+	if (nointerrupt != 2)
+	  pthread_testcancel();
 	return EINVAL;
+      }
     } while (r == ETIMEDOUT);
     if (r != 0 && r != EINVAL && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
       r = 0;
@@ -608,6 +595,8 @@ do_sema_b_wait_intern (HANDLE sema, int nointerrupt, DWORD timeout)
   } while (r == ETIMEDOUT && timeout != 0);
   if (r != 0 && r == ETIMEDOUT && WaitForSingleObject(sema, 0) == WAIT_OBJECT_0)
     r = 0;
+  if (r != 0 && nointerrupt != 2)
+    pthread_testcancel();
   return r;
 }
 
