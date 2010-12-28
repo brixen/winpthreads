@@ -37,6 +37,7 @@
 #ifndef WIN_PTHREADS
 #define WIN_PTHREADS
 
+#include <stddef.h>
 #include <errno.h>
 #include <sys/types.h>
 
