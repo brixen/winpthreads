@@ -1,0 +1,9 @@
+Makefile
+config.h
+config.log
+config.status
+libpthread*.a
+.deps
+.dirstamp
+*.o
+stamp-h1
